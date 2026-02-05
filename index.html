@@ -84,34 +84,38 @@
                     </div>
                 </div>
 
-                <div class="control-section">
-                    <span class="section-title" id="label-filter">🎨 필터</span>
-                    <div class="button-group filter-buttons">
-                        <button class="filter-btn active" data-filter="none">Normal</button>
-                        <button class="filter-btn locked" data-filter="vintage">Vintage</button>
-                        <button class="filter-btn locked" data-filter="mono">Mono</button>
-                    </div>
-                </div>
+                <button id="option-btn" class="glow-btn">✨ 꾸미기 옵션 (터치)</button>
 
-                <div class="control-section">
-                    <span class="section-title" id="label-lip">💄 립스틱</span>
-                    <div class="color-picker-group">
-                        <button class="color-btn active" data-color="none" style="background:transparent; border: 2px solid #fff;">X</button>
-                        <button class="color-btn locked" data-color="pink" style="background:#FF69B4;"></button>
-                        <button class="color-btn locked" data-color="red" style="background:#FF0000;"></button>
-                        <button class="color-btn locked" data-color="coral" style="background:#FF7F50;"></button>
+                <div id="extra-controls" style="display:none;">
+                    
+                    <div class="control-section">
+                        <span class="section-title" id="label-filter">🎨 필터</span>
+                        <div class="button-group filter-buttons">
+                            <button class="filter-btn active" data-filter="none">Normal</button>
+                            <button class="filter-btn" data-filter="vintage">Vintage</button>
+                            <button class="filter-btn" data-filter="mono">Mono</button>
+                        </div>
                     </div>
-                </div>
 
-                <div class="control-section">
-                    <span class="section-title" id="label-acc">🔴 액세서리</span>
-                    <div class="button-group acc-buttons">
-                        <button class="acc-btn active" data-acc="none">None</button>
-                        <button class="acc-btn locked" data-acc="nose">Rudolph</button>
+                    <div class="control-section">
+                        <span class="section-title" id="label-lip">💄 립스틱</span>
+                        <div class="color-picker-group">
+                            <button class="color-btn active" data-color="none" style="background:transparent; border: 2px solid #fff;">X</button>
+                            <button class="color-btn" data-color="pink" style="background:#FF69B4;"></button>
+                            <button class="color-btn" data-color="red" style="background:#FF0000;"></button>
+                            <button class="color-btn" data-color="coral" style="background:#FF7F50;"></button>
+                        </div>
                     </div>
-                </div>
 
-            </div>
+                    <div class="control-section">
+                        <span class="section-title" id="label-acc">🔴 액세서리</span>
+                        <div class="button-group acc-buttons">
+                            <button class="acc-btn active" data-acc="none">None</button>
+                            <button class="acc-btn" data-acc="nose">Rudolph</button>
+                        </div>
+                    </div>
+
+                </div> </div>
             <button id="capture-btn" aria-label="Take Photo"></button>
         </div>
     </div>
