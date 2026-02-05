@@ -165,3 +165,37 @@ input[type=range]::-webkit-slider-thumb {
   transform: translate(-50%, -50%) scale(0.9);
   background-color: #ddd;
 }
+
+/* [NEW] AI 상태 메시지 디자인 */
+#ai-status {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #00ff00; /* 녹색 글씨 */
+    border: 1px solid #00ff00;
+    
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 999;
+    pointer-events: none; /* 터치 방해 안 함 */
+    
+    /* 깜빡이는 애니메이션 */
+    animation: blink 1.5s infinite;
+    display: none; /* 기본은 숨김 (JS로 제어) */
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* 캔버스에 필터가 먹히도록 transition 추가 */
+#output_canvas {
+    transition: filter 0.2s ease;
+}
