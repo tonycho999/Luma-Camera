@@ -59,6 +59,7 @@ let currentStream = null;
 let lastUpdateTime = 0;
 let isAdShowing = false;
 let adTriggerSource = "";       
+let isAdLoaded = false; // [FIX] 광고 로딩 체크 변수
 
 // Three.js variables
 let renderer, scene, camera;
@@ -126,11 +127,11 @@ function initThreeJS() {
 
     createBeautyLightsPool();
     
-    // [NEW] 모듈 초기화 (Scene에 메쉬 추가)
+    // [NEW] 모듈 초기화
     LipstickManager.init(scene);
     AccessoryManager.init(scene);
 
-    applyFeatures(); // 초기 필터 등 적용
+    applyFeatures(); 
     detectAndSetLanguage();
     window.addEventListener('resize', onWindowResize);
 }
@@ -205,11 +206,6 @@ function renderLoop(timestamp) {
     meshPlane.geometry.attributes.position.array.set(originalPositions);
     beautySprites.forEach(s => s.scale.set(0,0,1));
     
-    // 모듈 초기화 (감지 안될 때 숨기기 위함인데, 각 매니저 내부에서 처리하거나 여기서 처리)
-    // 간단하게 여기서 숨기는 로직을 넣으려면 매니저에 hide()가 있어야 하지만
-    // 지금은 얼굴이 감지될 때만 updatePosition을 호출하므로, 
-    // 얼굴이 없을 때의 처리는 생략하거나 각 모듈에서 처리하도록 할 수 있습니다.
-
     if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
         if (results.faceLandmarks.length >= 2 && !isMultiUnlocked) { showAdModal('multi'); return; }
 
@@ -221,7 +217,7 @@ function renderLoop(timestamp) {
                 beautySprites[index].material.opacity = SETTINGS.lightIntensity;
             }
             
-            // [NEW] 첫 번째 얼굴에만 립스틱/액세서리 위치 업데이트
+            // 첫 번째 얼굴에만 립스틱/액세서리 위치 업데이트
             if (index === 0) {
                 if (currentLipColor !== 'none') {
                     LipstickManager.updatePosition(landmarks, camera, isFrontCamera);
@@ -247,28 +243,24 @@ function updateUIActiveState() {
     colorBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.color === currentLipColor));
     accBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.acc === currentAcc));
     
-    // 잠금 아이콘 제거
     if(isFilterUnlocked) filterBtns.forEach(btn => btn.classList.remove('locked'));
     if(isLipUnlocked) colorBtns.forEach(btn => btn.classList.remove('locked'));
     if(isAccUnlocked) accBtns.forEach(btn => btn.classList.remove('locked'));
 }
 
 function applyFeatures() {
-    // [NEW] 모듈을 통해 기능 적용
     FilterManager.applyFilter(canvasElement, currentFilter);
     LipstickManager.setColor(currentLipColor);
     AccessoryManager.setAccessory(currentAcc);
-    
     updateUIActiveState();
 }
 
-// 버튼 클릭 이벤트
 filterBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('filter', btn.dataset.filter)));
 colorBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('lip', btn.dataset.color)));
 accBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('acc', btn.dataset.acc)));
 
 function handleFeatureClick(type, value) {
-    if (value === 'none') { // '없음'은 항상 무료
+    if (value === 'none') { 
         if(type === 'filter') currentFilter = value;
         if(type === 'lip') currentLipColor = value;
         if(type === 'acc') currentAcc = value;
@@ -276,28 +268,39 @@ function handleFeatureClick(type, value) {
         return;
     }
 
-    // 잠겨있으면 광고 표시
     if (type === 'filter' && !isFilterUnlocked) { showAdModal('filter'); return; }
     if (type === 'lip' && !isLipUnlocked) { showAdModal('lip'); return; }
     if (type === 'acc' && !isAccUnlocked) { showAdModal('acc'); return; }
 
-    // 해제되었으면 적용
     if(type === 'filter') currentFilter = value;
     if(type === 'lip') currentLipColor = value;
     if(type === 'acc') currentAcc = value;
     applyFeatures();
 }
 
-// [광고 팝업]
+// [FIX] 광고 팝업: 에러 수정 적용됨
 function showAdModal(source) {
     adTriggerSource = source; 
     const t = TRANSLATIONS[currentLang];
+    
     if (source === 'multi') { adTitle.innerText = t.ad_multi_title; adDesc.innerText = t.ad_multi_desc; }
     else if (source === 'filter') { adTitle.innerText = t.ad_filter_title; adDesc.innerText = t.ad_filter_desc; }
     else if (source === 'lip') { adTitle.innerText = t.ad_lip_title; adDesc.innerText = t.ad_lip_desc; }
     else if (source === 'acc') { adTitle.innerText = t.ad_acc_title; adDesc.innerText = t.ad_acc_desc; }
+    
     isAdShowing = true;
-    adModal.style.display = "flex";
+    adModal.style.display = "flex"; // 1. 먼저 창을 띄움 (너비 확보)
+    
+    // 2. 그 다음 광고 요청 (딱 한 번만 실행)
+    if (!isAdLoaded) {
+        try {
+            (window.adsbygoogle = window.adsbygoogle || []).push({});
+            isAdLoaded = true;
+            console.log("AdSense loaded");
+        } catch (e) {
+            console.log("AdSense error (ignored):", e);
+        }
+    }
 }
 
 closeAdBtn.addEventListener('click', () => {
@@ -307,7 +310,7 @@ closeAdBtn.addEventListener('click', () => {
     else if (adTriggerSource === 'filter') { isFilterUnlocked = true; }
     else if (adTriggerSource === 'lip') { isLipUnlocked = true; }
     else if (adTriggerSource === 'acc') { isAccUnlocked = true; }
-    updateUIActiveState(); // 잠금 아이콘 제거
+    updateUIActiveState();
 });
 
 // 기타 이벤트
