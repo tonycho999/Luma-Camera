@@ -1,18 +1,62 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정] 조명(무료) / 잡티(광고) / 다중(광고)
+// [설정] 다국어 자동 감지 & 모든 기능 통합
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
     updateInterval: 100, 
     beautyOpacity: 0.4,
     maxFaces: 20,
-    
-    // 잡티 제거 강도 (토글 켜졌을 때만 적용)
     filterBlur: 0,      
     filterContrast: 100 
 };
+
+// [번역 데이터]
+const TRANSLATIONS = {
+    ko: {
+        slim: "턱선",
+        beauty: "뽀샤시",
+        flawless: "잡티 제거",
+        ad_multi_title: "👨‍👩‍👧‍👦 단체 사진 잠금 해제",
+        ad_multi_desc: "2명 이상 감지되었습니다. 광고를 보고 활성화하세요.",
+        ad_flawless_title: "✨ 잡티 제거 잠금 해제",
+        ad_flawless_desc: "도자기 피부 기능을 사용하려면 광고를 시청하세요.",
+        ad_close: "광고 닫고 활성화"
+    },
+    en: {
+        slim: "Slim",
+        beauty: "Beauty",
+        flawless: "Flawless",
+        ad_multi_title: "👨‍👩‍👧‍👦 Unlock Group Photo",
+        ad_multi_desc: "2+ people detected. Watch ad to unlock.",
+        ad_flawless_title: "✨ Unlock Flawless Skin",
+        ad_flawless_desc: "Watch ad to enable flawless skin mode.",
+        ad_close: "Close & Enable"
+    },
+    cn: {
+        slim: "瘦脸",
+        beauty: "美颜",
+        flawless: "磨皮",
+        ad_multi_title: "👨‍👩‍👧‍👦 解锁多人模式",
+        ad_multi_desc: "检测到多人。观看广告以解锁。",
+        ad_flawless_title: "✨ 解锁磨皮功能",
+        ad_flawless_desc: "观看广告以启用陶瓷肌模式。",
+        ad_close: "关闭并启用"
+    },
+    jp: {
+        slim: "輪郭",
+        beauty: "美肌",
+        flawless: "肌補正",
+        ad_multi_title: "👨‍👩‍👧‍👦 グループ写真の解除",
+        ad_multi_desc: "2人以上を検出しました。広告を見て解除します。",
+        ad_flawless_title: "✨ 肌補正の解除",
+        ad_flawless_desc: "広告を見て陶器肌モードを有効にします。",
+        ad_close: "閉じて有効化"
+    }
+};
+
+let currentLang = 'en'; // 기본값은 영어(글로벌)
 
 const video = document.getElementById("webcam");
 const canvasElement = document.getElementById("output_canvas");
@@ -20,11 +64,13 @@ const slimRange = document.getElementById("slim-range");
 const beautyRange = document.getElementById("beauty-range");
 const captureBtn = document.getElementById("capture-btn");
 const switchBtn = document.getElementById("switch-camera-btn");
-
-// [NEW] 토글 버튼
 const flawlessToggle = document.getElementById("flawless-toggle");
 
-// [광고 요소]
+const labelSlim = document.getElementById("label-slim");
+const labelBeauty = document.getElementById("label-beauty");
+const labelFlawless = document.getElementById("label-flawless");
+const langBtns = document.querySelectorAll(".lang-btn");
+
 const adModal = document.getElementById("ad-modal");
 const adTitle = document.getElementById("ad-title");
 const adDesc = document.getElementById("ad-desc");
@@ -35,11 +81,10 @@ let isFrontCamera = true;
 let currentStream = null;
 let lastUpdateTime = 0;
 
-// [잠금 상태 변수]
-let isMultiUnlocked = false;    // 다중 얼굴 잠금해제 여부
-let isFlawlessUnlocked = false; // 잡티 제거 잠금해제 여부
+let isMultiUnlocked = false;    
+let isFlawlessUnlocked = false; 
 let isAdShowing = false;
-let adTriggerSource = "";       // 광고를 부른 녀석이 누구냐 ('multi' 또는 'flawless')
+let adTriggerSource = "";       
 
 let renderer, scene, camera;
 let videoTexture, meshPlane;
@@ -48,6 +93,50 @@ let beautySprites = [];
 
 let videoAspect = 1.0; 
 let screenAspect = 1.0;
+
+// ==========================================
+// 0. 언어 설정 & 자동 감지
+// ==========================================
+function setLanguage(lang) {
+    if (!TRANSLATIONS[lang]) return;
+    currentLang = lang;
+
+    const t = TRANSLATIONS[lang];
+    
+    labelSlim.innerText = t.slim;
+    labelBeauty.innerText = t.beauty;
+    labelFlawless.innerText = t.flawless;
+    closeAdBtn.innerText = t.ad_close;
+
+    langBtns.forEach(btn => {
+        if(btn.dataset.lang === lang) btn.classList.add("active");
+        else btn.classList.remove("active");
+    });
+}
+
+// [핵심] 디바이스 언어 자동 감지 함수
+function detectAndSetLanguage() {
+    // 브라우저 언어 가져오기 (예: 'ko-KR', 'en-US', 'zh-CN')
+    const userLang = navigator.language || navigator.userLanguage; 
+    console.log("감지된 언어:", userLang);
+
+    if (userLang.startsWith('ko')) {
+        setLanguage('ko');
+    } else if (userLang.startsWith('zh')) {
+        setLanguage('cn');
+    } else if (userLang.startsWith('ja')) {
+        setLanguage('jp');
+    } else {
+        setLanguage('en'); // 그 외에는 전부 영어
+    }
+}
+
+langBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        setLanguage(btn.dataset.lang);
+    });
+});
+
 
 // ==========================================
 // 1. Three.js 초기화
@@ -99,7 +188,10 @@ function initThreeJS() {
     scene.add(meshPlane);
 
     createBeautyLightsPool();
-    updateCSSFilters(); // 초기 필터
+    updateCSSFilters(); 
+    
+    // [중요] 시작할 때 언어 자동 감지 실행
+    detectAndSetLanguage();
 
     window.addEventListener('resize', onWindowResize);
 }
@@ -244,7 +336,7 @@ function renderLoop(timestamp) {
 
     if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
         
-        // [광고 체크 1] 다중 얼굴
+        // [광고 체크]
         if (results.faceLandmarks.length >= 2 && !isMultiUnlocked) {
             showAdModal('multi');
             return; 
@@ -266,22 +358,20 @@ function renderLoop(timestamp) {
 }
 
 // ==========================================
-// 5. 잡티 제거 (조건부 필터 적용)
+// 5. 잡티 제거 (조건부 필터)
 // ==========================================
 function updateCSSFilters() {
-    const intensity = SETTINGS.beautyOpacity; // 0.0 ~ 0.6
+    const intensity = SETTINGS.beautyOpacity; 
     
-    // 기본 효과 (조명만)
     let blurVal = 0;
     let contrastVal = 100;
     let brightVal = 100 + (intensity * 10); 
     let saturateVal = 100 + (intensity * 5); 
 
-    // [잡티 제거 토글이 켜져야만 실행]
     if (flawlessToggle.checked) {
-        blurVal = intensity * 1.5;            // 모공 블러
-        contrastVal = 100 - (intensity * 15); // 대비 낮춤 (잡티 숨김)
-        brightVal += 10;                      // 더 밝게
+        blurVal = intensity * 1.5;            
+        contrastVal = 100 - (intensity * 15); 
+        brightVal += 10;                      
     }
 
     canvasElement.style.filter = `
@@ -352,16 +442,19 @@ function updateBeautyPosition(landmarks, sprite) {
     sprite.scale.set(size, size, 1);
 }
 
-// [광고 시스템]
+// [광고 팝업 - 다국어 자동 적용]
 function showAdModal(source) {
-    adTriggerSource = source; // 누가 불렀는지 저장
+    adTriggerSource = source; 
     
+    // 현재 감지된(또는 선택된) 언어로 광고 문구 표시
+    const t = TRANSLATIONS[currentLang];
+
     if (source === 'multi') {
-        adTitle.innerText = "👨‍👩‍👧‍👦 단체 사진 잠금 해제";
-        adDesc.innerText = "2명 이상 감지되었습니다. 광고를 보고 활성화하세요.";
+        adTitle.innerText = t.ad_multi_title;
+        adDesc.innerText = t.ad_multi_desc;
     } else if (source === 'flawless') {
-        adTitle.innerText = "✨ 잡티 제거 잠금 해제";
-        adDesc.innerText = "도자기 피부 기능을 사용하려면 광고를 시청하세요.";
+        adTitle.innerText = t.ad_flawless_title;
+        adDesc.innerText = t.ad_flawless_desc;
     }
     
     isAdShowing = true;
@@ -373,26 +466,21 @@ if(closeAdBtn) {
         isAdShowing = false;
         adModal.style.display = "none";
         
-        // 보상 지급
         if (adTriggerSource === 'multi') {
             isMultiUnlocked = true;
         } else if (adTriggerSource === 'flawless') {
             isFlawlessUnlocked = true;
-            flawlessToggle.checked = true; // 자동으로 켜줌
+            flawlessToggle.checked = true; 
             updateCSSFilters();
         }
     });
 }
 
-// [이벤트] 토글 클릭 시 광고 체크
 flawlessToggle.addEventListener('click', (e) => {
-    // 이미 해제되었으면 그냥 둠
     if (isFlawlessUnlocked) {
         updateCSSFilters();
         return;
     }
-    
-    // 해제 안 됐으면 체크 취소하고 광고 띄움
     e.preventDefault(); 
     showAdModal('flawless');
 });
