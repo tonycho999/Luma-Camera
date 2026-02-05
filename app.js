@@ -1,61 +1,61 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정] 기능 분리: 조명(밝기) vs 잡티(질감)
+// [설정] 용어 변경 (소프트 스킨)
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
     updateInterval: 100, 
     maxFaces: 20,
     
-    // 조명 강도 (슬라이더로 조절)
+    // 조명 강도
     lightIntensity: 0.4, 
 
-    // [고정값] 잡티 제거 강도 (토글 켜면 적용)
-    flawlessBlur: 1.5,      // 블러 강도 (높을수록 피부가 뭉개짐)
-    flawlessContrast: 85    // 대비 (낮을수록 잡티가 안 보임)
+    // 필터 강도 (소프트 스킨)
+    flawlessBlur: 1.5,      
+    flawlessContrast: 85    
 };
 
-// [번역 데이터]
+// [번역 데이터 수정됨]
 const TRANSLATIONS = {
     ko: {
         slim: "턱선",
         beauty: "뽀샤시(조명)",
-        flawless: "잡티 제거(블러)",
+        flawless: "소프트 스킨", // [수정] 더 감성적인 표현
         ad_multi_title: "👨‍👩‍👧‍👦 단체 사진 잠금 해제",
         ad_multi_desc: "2명 이상 감지되었습니다. 광고를 보고 활성화하세요.",
-        ad_flawless_title: "✨ 잡티 제거 잠금 해제",
-        ad_flawless_desc: "도자기 피부 기능을 사용하려면 광고를 시청하세요.",
+        ad_flawless_title: "✨ 소프트 스킨 잠금 해제",
+        ad_flawless_desc: "부드러운 피부결 필터를 사용하려면 광고를 시청하세요.", // [수정] 기대치 조절
         ad_close: "광고 닫고 활성화"
     },
     en: {
         slim: "Slim",
         beauty: "Lighting",
-        flawless: "Smooth Skin",
+        flawless: "Soft Skin", // [수정]
         ad_multi_title: "👨‍👩‍👧‍👦 Unlock Group Photo",
         ad_multi_desc: "2+ people detected. Watch ad to unlock.",
-        ad_flawless_title: "✨ Unlock Smooth Skin",
-        ad_flawless_desc: "Watch ad to enable flawless skin mode.",
+        ad_flawless_title: "✨ Unlock Soft Skin",
+        ad_flawless_desc: "Watch ad to enable soft skin texture filter.",
         ad_close: "Close & Enable"
     },
     cn: {
         slim: "瘦脸",
         beauty: "补光",
-        flawless: "磨皮",
+        flawless: "柔肤", // [수정] 부드러운 피부
         ad_multi_title: "👨‍👩‍👧‍👦 解锁多人模式",
         ad_multi_desc: "检测到多人。观看广告以解锁。",
-        ad_flawless_title: "✨ 解锁磨皮功能",
-        ad_flawless_desc: "观看广告以启用陶瓷肌模式。",
+        ad_flawless_title: "✨ 解锁柔肤滤镜",
+        ad_flawless_desc: "观看广告以启用柔肤模式。",
         ad_close: "关闭并启用"
     },
     jp: {
         slim: "輪郭",
         beauty: "照明",
-        flawless: "肌補正",
+        flawless: "ソフト肌", // [수정]
         ad_multi_title: "👨‍👩‍👧‍👦 グループ写真の解除",
         ad_multi_desc: "2人以上を検出しました。広告を見て解除します。",
-        ad_flawless_title: "✨ 肌補正の解除",
-        ad_flawless_desc: "広告を見て陶器肌モードを有効にします。",
+        ad_flawless_title: "✨ ソフト肌の解除",
+        ad_flawless_desc: "広告を見てソフト肌フィルターを有効にします。",
         ad_close: "閉じて有効化"
     }
 };
@@ -189,7 +189,6 @@ function initThreeJS() {
     window.addEventListener('resize', onWindowResize);
 }
 
-// 조명(Sprite) 생성 - 이제 오직 '밝기' 역할만 함
 function createBeautyLightsPool() {
     const canvas = document.createElement('canvas');
     canvas.width = 128;
@@ -197,7 +196,7 @@ function createBeautyLightsPool() {
     const context = canvas.getContext('2d');
     
     const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.5)'); // 순수 흰색 빛
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.5)'); 
     gradient.addColorStop(0.6, 'rgba(255, 240, 240, 0.2)'); 
     gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
@@ -209,7 +208,7 @@ function createBeautyLightsPool() {
         map: texture, 
         transparent: true,
         opacity: 0, 
-        blending: THREE.AdditiveBlending, // 빛 추가 모드
+        blending: THREE.AdditiveBlending, 
         depthTest: false
     });
 
@@ -341,7 +340,6 @@ function renderLoop(timestamp) {
             if (index < beautySprites.length) {
                 const sprite = beautySprites[index];
                 updateBeautyPosition(landmarks, sprite);
-                // [변경] 슬라이더 값은 이제 조명 강도로만 쓰임
                 sprite.material.opacity = SETTINGS.lightIntensity; 
             }
         });
@@ -352,19 +350,17 @@ function renderLoop(timestamp) {
 }
 
 // ==========================================
-// 5. 잡티 제거 (기능 독립)
+// 5. 잡티 제거 (조건부 필터)
 // ==========================================
 function updateCSSFilters() {
-    // 1. 기본 상태: 아무 효과 없음
     let blurVal = 0;
     let contrastVal = 100;
     let saturateVal = 100;
 
-    // 2. 잡티 제거 토글이 켜지면 -> 블러 적용 (조명과 무관)
     if (flawlessToggle.checked) {
-        blurVal = SETTINGS.flawlessBlur;        // 1.5px
-        contrastVal = SETTINGS.flawlessContrast; // 85% (잡티 숨김)
-        saturateVal = 105;                      // 생기 약간 추가
+        blurVal = SETTINGS.flawlessBlur;        
+        contrastVal = SETTINGS.flawlessContrast; 
+        saturateVal = 105;                      
     }
 
     canvasElement.style.filter = `
@@ -372,7 +368,6 @@ function updateCSSFilters() {
         contrast(${contrastVal}%) 
         saturate(${saturateVal}%)
     `;
-    // 밝기는 Three.js 조명(Sprite)이 담당하므로 CSS brightness는 건드리지 않음
 }
 
 // ==========================================
@@ -476,14 +471,13 @@ flawlessToggle.addEventListener('click', (e) => {
     showAdModal('flawless');
 });
 
-// [턱선]
+
 slimRange.addEventListener('input', (e) => {
     const val = parseFloat(e.target.value);
     SETTINGS.slimStrength = (1.0 - val) / 0.15;
     if(SETTINGS.slimStrength < 0) SETTINGS.slimStrength = 0;
 });
 
-// [뽀샤시 슬라이더] -> 이제 조명 강도만 조절
 beautyRange.addEventListener('input', (e) => {
     const val = parseInt(e.target.value); 
     // 100 ~ 150 -> 0.0 ~ 0.8
