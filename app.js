@@ -1,6 +1,10 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
-// [NEW] 분리된 언어 파일 불러오기
 import { TRANSLATIONS } from "./lang.js";
+
+// [NEW] 기능별 모듈 불러오기
+import { FilterManager } from "./js/filter.js";
+import { LipstickManager } from "./js/lipstick.js";
+import { AccessoryManager } from "./js/accessory.js";
 
 // ==========================================
 // [설정] 뷰티 + 필터 + 메이크업 + AR
@@ -62,10 +66,6 @@ let videoTexture, meshPlane;
 let originalPositions;
 let beautySprites = []; 
 
-// 추가된 Three.js 객체들
-let lipMesh; // 립스틱 메쉬
-let noseMesh; // 루돌프 코 메쉬
-
 let videoAspect = 1.0; 
 let screenAspect = 1.0;
 
@@ -98,7 +98,7 @@ function detectAndSetLanguage() {
 }
 
 // ==========================================
-// 1. Three.js 초기화 (립스틱, 코 추가)
+// 1. Three.js 초기화
 // ==========================================
 function initThreeJS() {
     const width = window.innerWidth;
@@ -126,39 +126,14 @@ function initThreeJS() {
 
     createBeautyLightsPool();
     
-    // [NEW] 립스틱 메쉬 생성
-    createLipMesh();
-    // [NEW] 루돌프 코 메쉬 생성
-    createNoseMesh();
+    // [NEW] 모듈 초기화 (Scene에 메쉬 추가)
+    LipstickManager.init(scene);
+    AccessoryManager.init(scene);
 
-    updateCSSFilters(); 
+    applyFeatures(); // 초기 필터 등 적용
     detectAndSetLanguage();
     window.addEventListener('resize', onWindowResize);
 }
-
-// 립스틱용 메쉬 만들기
-function createLipMesh() {
-    const lipIndices = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61]; 
-    const geometry = new THREE.BufferGeometry();
-    const vertices = new Float32Array(lipIndices.length * 3);
-    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    
-    const material = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.0 });
-    lipMesh = new THREE.Mesh(geometry, material);
-    lipMesh.renderOrder = 998; 
-    scene.add(lipMesh);
-}
-
-// 루돌프 코 메쉬 만들기
-function createNoseMesh() {
-    const geometry = new THREE.SphereGeometry(0.05, 16, 16); 
-    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    noseMesh = new THREE.Mesh(geometry, material);
-    noseMesh.scale.set(0,0,0); 
-    noseMesh.renderOrder = 1000;
-    scene.add(noseMesh);
-}
-
 
 function createBeautyLightsPool() {
     const canvas = document.createElement('canvas');
@@ -216,7 +191,7 @@ function startWebcam() {
 }
 
 // ==========================================
-// 3. 렌더링 루프 (핵심 업데이트)
+// 3. 렌더링 루프
 // ==========================================
 function renderLoop(timestamp) {
     requestAnimationFrame(renderLoop);
@@ -229,9 +204,11 @@ function renderLoop(timestamp) {
 
     meshPlane.geometry.attributes.position.array.set(originalPositions);
     beautySprites.forEach(s => s.scale.set(0,0,1));
-    // 립스틱, 코 초기화
-    if(lipMesh) lipMesh.material.opacity = 0;
-    if(noseMesh) noseMesh.scale.set(0,0,0);
+    
+    // 모듈 초기화 (감지 안될 때 숨기기 위함인데, 각 매니저 내부에서 처리하거나 여기서 처리)
+    // 간단하게 여기서 숨기는 로직을 넣으려면 매니저에 hide()가 있어야 하지만
+    // 지금은 얼굴이 감지될 때만 updatePosition을 호출하므로, 
+    // 얼굴이 없을 때의 처리는 생략하거나 각 모듈에서 처리하도록 할 수 있습니다.
 
     if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
         if (results.faceLandmarks.length >= 2 && !isMultiUnlocked) { showAdModal('multi'); return; }
@@ -244,87 +221,25 @@ function renderLoop(timestamp) {
                 beautySprites[index].material.opacity = SETTINGS.lightIntensity;
             }
             
-            // 첫 번째 얼굴에만 립스틱/액세서리 적용
+            // [NEW] 첫 번째 얼굴에만 립스틱/액세서리 위치 업데이트
             if (index === 0) {
-                updateLipMesh(landmarks);
-                updateNoseMesh(landmarks);
+                if (currentLipColor !== 'none') {
+                    LipstickManager.updatePosition(landmarks, camera, isFrontCamera);
+                }
+                if (currentAcc !== 'none') {
+                    AccessoryManager.updatePosition(landmarks, camera, isFrontCamera);
+                }
             }
         });
     }
+    
     meshPlane.geometry.attributes.position.needsUpdate = true;
-    // 거울모드에 따라 액세서리도 반전 필요
-    if(noseMesh) noseMesh.scale.x = isFrontCamera ? -Math.abs(noseMesh.scale.x) : Math.abs(noseMesh.scale.x);
-
     renderer.render(scene, camera);
 }
 
-// 립스틱 위치 업데이트
-function updateLipMesh(landmarks) {
-    if (currentLipColor === 'none' || !lipMesh) return;
-    
-    const positions = lipMesh.geometry.attributes.position.array;
-    const lipIndices = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
-    
-    const width = camera.right - camera.left;
-    const height = camera.top - camera.bottom;
-
-    for (let i = 0; i < lipIndices.length; i++) {
-        const lm = landmarks[lipIndices[i]];
-        // 월드 좌표로 변환 (거울모드 고려)
-        positions[i * 3] = (lm.x - 0.5) * width * (isFrontCamera ? -1 : 1);
-        positions[i * 3 + 1] = -(lm.y - 0.5) * height;
-        positions[i * 3 + 2] = -lm.z * width * 0.5 + 0.01; 
-    }
-    lipMesh.geometry.attributes.position.needsUpdate = true;
-    lipMesh.material.opacity = 0.5; // 반투명
-}
-
-// 루돌프 코 위치 업데이트
-function updateNoseMesh(landmarks) {
-    if (currentAcc !== 'nose' || !noseMesh) return;
-
-    const noseTip = landmarks[1]; // 코 끝
-    const width = camera.right - camera.left;
-    const height = camera.top - camera.bottom;
-
-    noseMesh.position.set(
-        (noseTip.x - 0.5) * width * (isFrontCamera ? -1 : 1),
-        -(noseTip.y - 0.5) * height,
-        -noseTip.z * width * 0.5 + 0.05 // 코보다 더 앞
-    );
-    
-    // 얼굴 크기에 맞춰 코 크기 조절
-    const faceW = Math.abs(landmarks[454].x - landmarks[234].x) * width;
-    const s = faceW * 0.25;
-    noseMesh.scale.set(s, s, s);
-}
-
 
 // ==========================================
-// 4. 기능 구현 (필터, 립스틱, 액세서리)
-// ==========================================
-
-// 필터 CSS 적용
-function updateCSSFilters() {
-    let filterString = '';
-    if (currentFilter === 'vintage') filterString = 'sepia(0.5) contrast(0.9) brightness(1.1)';
-    else if (currentFilter === 'mono') filterString = 'grayscale(1) contrast(1.1)';
-    canvasElement.style.filter = filterString;
-}
-
-// 립스틱 색상 변경
-function updateLipColor() {
-    if(!lipMesh) return;
-    let color = 0xffffff;
-    if(currentLipColor === 'pink') color = 0xFF69B4;
-    else if(currentLipColor === 'red') color = 0xFF0000;
-    else if(currentLipColor === 'coral') color = 0xFF7F50;
-    lipMesh.material.color.setHex(color);
-}
-
-
-// ==========================================
-// 5. UI 이벤트 및 광고 로직
+// 4. 기능 적용 & 이벤트 핸들러
 // ==========================================
 
 function updateUIActiveState() {
@@ -338,7 +253,16 @@ function updateUIActiveState() {
     if(isAccUnlocked) accBtns.forEach(btn => btn.classList.remove('locked'));
 }
 
-// 이벤트 리스너 연결
+function applyFeatures() {
+    // [NEW] 모듈을 통해 기능 적용
+    FilterManager.applyFilter(canvasElement, currentFilter);
+    LipstickManager.setColor(currentLipColor);
+    AccessoryManager.setAccessory(currentAcc);
+    
+    updateUIActiveState();
+}
+
+// 버튼 클릭 이벤트
 filterBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('filter', btn.dataset.filter)));
 colorBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('lip', btn.dataset.color)));
 accBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('acc', btn.dataset.acc)));
@@ -362,12 +286,6 @@ function handleFeatureClick(type, value) {
     if(type === 'lip') currentLipColor = value;
     if(type === 'acc') currentAcc = value;
     applyFeatures();
-}
-
-function applyFeatures() {
-    updateCSSFilters();
-    updateLipColor();
-    updateUIActiveState();
 }
 
 // [광고 팝업]
