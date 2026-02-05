@@ -4,38 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Luma Camera</title>
-
+    
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
 
-    <link rel="apple-touch-icon" href="assets/icons/icon-180.png">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
     <link rel="stylesheet" href="style.css">
-    <script src="assets/libs/vision_bundle.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
     <div id="app-container">
+        
         <video id="webcam" autoplay playsinline muted></video>
 
         <canvas id="output_canvas"></canvas>
 
+        <div id="top-bar">
+            <button id="switch-camera-btn">🔄</button>
+        </div>
+
         <div id="ui-layer">
-            <button id="capture-btn">📸</button>
+            
+            <div id="controls-container">
+                <div class="control-group">
+                    <span>턱선</span> <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
+                </div>
+                <div class="control-group">
+                    <span>뽀샤시</span> <input type="range" id="beauty-range" min="1.0" max="1.5" step="0.05" value="1.15">
+                </div>
+            </div>
+
+            <button id="capture-btn"></button>
         </div>
     </div>
 
     <script type="module" src="app.js"></script>
-    
+
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then((reg) => console.log('Service Worker 등록 성공:', reg.scope))
-                    .catch((err) => console.log('Service Worker 등록 실패:', err));
+                navigator.serviceWorker.register('./sw.js');
             });
         }
     </script>

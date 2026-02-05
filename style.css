@@ -1,108 +1,167 @@
-/* 기본 초기화 */
+/* style.css 전체 교체 */
+:root {
+  --primary-color: #ffffff;
+  --bg-color: #000000;
+}
+
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    /* 사용자가 화면을 길게 눌러도 텍스트 선택 안 되게 막기 */
-    user-select: none; 
-    -webkit-user-select: none;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none; /* 텍스트 선택 방지 */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body, html {
-    width: 100%;
-    height: 100%;
-    background-color: #000; /* 몰입감을 위한 검은 배경 */
-    overflow: hidden; /* 스크롤 방지 */
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-color);
+  overflow: hidden; /* 스크롤바 없애기 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* 앱 전체 컨테이너 */
+/* 앱 전체를 감싸는 통 */
 #app-container {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: black;
 }
 
-/* 1. 원본 웹캠 영상 (숨김) */
-/* display: none을 하면 영상이 멈출 수 있으므로 투명하게 숨김 */
+/* 1. 원본 웹캠 (반드시 숨김 처리) */
 #webcam {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0; 
-    pointer-events: none;
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
 }
 
-/* 2. 필터 처리된 결과 화면 (캔버스) */
+/* 2. 필터 결과 화면 (화면 꽉 채우기) */
 #output_canvas {
-    width: 100%;
-    height: 100%;
-    object-fit: cover; /* 화면 꽉 차게 */
-    
-    /* 셀카 모드: 거울처럼 좌우 반전 */
-    transform: scaleX(-1); 
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 비율 유지하며 꽉 채우기 */
+  display: block;
 }
 
-/* 3. UI 레이어 (버튼 등) */
+/* 3. 상단 버튼 (카메라 전환) */
+#top-bar {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  /* 노치 디자인 대응 */
+  padding-top: env(safe-area-inset-top); 
+}
+
+#switch-camera-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.4);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: 24px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 4. 하단 컨트롤 영역 (슬라이더 + 촬영버튼) */
 #ui-layer {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 150px; /* 하단 컨트롤 영역 높이 */
-    
-    /* 그라데이션을 넣어 버튼이 잘 보이게 함 */
-    background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
-    
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    
-    /* 아이폰 하단 홈 바(Home Indicator) 영역 침범 방지 */
-    padding-bottom: env(safe-area-inset-bottom);
-    z-index: 10;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 40px;
+  padding-bottom: max(40px, env(safe-area-inset-bottom));
+  
+  /* 배경을 어둡게 그라데이션 처리해서 글씨 잘 보이게 함 */
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+  
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  z-index: 100;
 }
 
-/* 4. 촬영 버튼 디자인 */
+/* 슬라이더 박스 */
+#controls-container {
+  width: 80%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: white;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+
+.control-group span {
+  width: 60px;
+  font-size: 14px;
+}
+
+/* 슬라이더 디자인 */
+input[type=range] {
+  flex: 1;
+  margin-left: 10px;
+  height: 4px;
+  border-radius: 2px;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.3);
+  outline: none;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+/* 촬영 버튼 */
 #capture-btn {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    background-color: transparent; /* 내부 투명 */
-    border: 4px solid white; /* 흰색 테두리 */
-    position: relative;
-    cursor: pointer;
-    outline: none;
-    
-    /* 더블 탭 확대 방지 */
-    touch-action: manipulation;
-    transition: transform 0.1s ease;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: transparent;
+  border: 4px solid white;
+  position: relative;
+  cursor: pointer;
 }
 
-/* 버튼 안의 꽉 찬 흰색 원 */
 #capture-btn::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 54px;
-    height: 54px;
-    background-color: white;
-    border-radius: 50%;
-    transition: all 0.1s ease;
-}
-
-/* 버튼 눌렀을 때 애니메이션 (찰칵 효과) */
-#capture-btn:active {
-    transform: scale(0.95); /* 전체적으로 살짝 작아짐 */
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 54px;
+  height: 54px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.1s;
 }
 
 #capture-btn:active::after {
-    background-color: #ddd; /* 내부 원 색상 살짝 어둡게 */
-    width: 50px; /* 내부 원 작아짐 */
-    height: 50px;
+  transform: translate(-50%, -50%) scale(0.9);
+  background-color: #ddd;
 }
