@@ -1,24 +1,33 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정] 뽀샤시 개선 (전체적으로 은은하게)
+// [설정] 조명(무료) / 잡티(광고) / 다중(광고)
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
-    updateInterval: 100, // 0.1초
+    updateInterval: 100, 
     beautyOpacity: 0.4,
-    maxFaces: 20 
+    maxFaces: 20,
+    
+    // 잡티 제거 강도 (토글 켜졌을 때만 적용)
+    filterBlur: 0,      
+    filterContrast: 100 
 };
 
 const video = document.getElementById("webcam");
 const canvasElement = document.getElementById("output_canvas");
-// const statusMsg = document.getElementById("ai-status");
 const slimRange = document.getElementById("slim-range");
 const beautyRange = document.getElementById("beauty-range");
 const captureBtn = document.getElementById("capture-btn");
 const switchBtn = document.getElementById("switch-camera-btn");
 
+// [NEW] 토글 버튼
+const flawlessToggle = document.getElementById("flawless-toggle");
+
+// [광고 요소]
 const adModal = document.getElementById("ad-modal");
+const adTitle = document.getElementById("ad-title");
+const adDesc = document.getElementById("ad-desc");
 const closeAdBtn = document.getElementById("close-ad-btn");
 
 let faceLandmarker;
@@ -26,8 +35,11 @@ let isFrontCamera = true;
 let currentStream = null;
 let lastUpdateTime = 0;
 
-let isMultiUnlocked = false; 
-let isAdShowing = false; 
+// [잠금 상태 변수]
+let isMultiUnlocked = false;    // 다중 얼굴 잠금해제 여부
+let isFlawlessUnlocked = false; // 잡티 제거 잠금해제 여부
+let isAdShowing = false;
+let adTriggerSource = "";       // 광고를 부른 녀석이 누구냐 ('multi' 또는 'flawless')
 
 let renderer, scene, camera;
 let videoTexture, meshPlane;
@@ -87,25 +99,20 @@ function initThreeJS() {
     scene.add(meshPlane);
 
     createBeautyLightsPool();
+    updateCSSFilters(); // 초기 필터
 
     window.addEventListener('resize', onWindowResize);
 }
 
-// [핵심 수정] 조명을 더 부드럽고 넓게 만듦
 function createBeautyLightsPool() {
     const canvas = document.createElement('canvas');
     canvas.width = 128;
     canvas.height = 128;
     const context = canvas.getContext('2d');
     
-    // 넓게 퍼지는 그라데이션
     const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
-    
-    // 중심부를 너무 밝지 않게(0.6) 해서 코만 튀는 현상 방지
     gradient.addColorStop(0, 'rgba(255, 230, 230, 0.6)'); 
-    // 중간 부분(0.7)까지 빛을 유지해서 얼굴 전체를 덮음
     gradient.addColorStop(0.7, 'rgba(255, 240, 240, 0.3)'); 
-    // 끝부분
     gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
     context.fillStyle = gradient;
@@ -116,7 +123,7 @@ function createBeautyLightsPool() {
         map: texture, 
         transparent: true,
         opacity: 0, 
-        blending: THREE.AdditiveBlending, // 빛을 더해주는 효과
+        blending: THREE.AdditiveBlending,
         depthTest: false
     });
 
@@ -237,8 +244,9 @@ function renderLoop(timestamp) {
 
     if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
         
+        // [광고 체크 1] 다중 얼굴
         if (results.faceLandmarks.length >= 2 && !isMultiUnlocked) {
-            showAdModal();
+            showAdModal('multi');
             return; 
         }
 
@@ -258,23 +266,34 @@ function renderLoop(timestamp) {
 }
 
 // ==========================================
-// 5. 광고 기능 함수
+// 5. 잡티 제거 (조건부 필터 적용)
 // ==========================================
-function showAdModal() {
-    isAdShowing = true;
-    if(adModal) adModal.style.display = "flex";
+function updateCSSFilters() {
+    const intensity = SETTINGS.beautyOpacity; // 0.0 ~ 0.6
+    
+    // 기본 효과 (조명만)
+    let blurVal = 0;
+    let contrastVal = 100;
+    let brightVal = 100 + (intensity * 10); 
+    let saturateVal = 100 + (intensity * 5); 
+
+    // [잡티 제거 토글이 켜져야만 실행]
+    if (flawlessToggle.checked) {
+        blurVal = intensity * 1.5;            // 모공 블러
+        contrastVal = 100 - (intensity * 15); // 대비 낮춤 (잡티 숨김)
+        brightVal += 10;                      // 더 밝게
+    }
+
+    canvasElement.style.filter = `
+        blur(${blurVal}px) 
+        brightness(${brightVal}%) 
+        contrast(${contrastVal}%) 
+        saturate(${saturateVal}%)
+    `;
 }
 
-if(closeAdBtn) {
-    closeAdBtn.addEventListener('click', () => {
-        isAdShowing = false;
-        isMultiUnlocked = true;
-        if(adModal) adModal.style.display = "none";
-    });
-}
-
 // ==========================================
-// 6. 워핑 & 조명 로직
+// 6. 워핑 & 조명 & UI
 // ==========================================
 function applyFaceWarping(landmarks, positions) {
     if (SETTINGS.slimStrength <= 0.01) return;
@@ -316,29 +335,69 @@ function applyFaceWarping(landmarks, positions) {
 
 function updateBeautyPosition(landmarks, sprite) {
     if (!sprite) return;
-
     const width = camera.right - camera.left;
     const height = camera.top - camera.bottom;
 
     let noseX = (landmarks[1].x - 0.5) * width;
     const noseY = -(landmarks[1].y - 0.5) * height;
 
-    if (isFrontCamera) {
-        noseX = -noseX; 
-    }
+    if (isFrontCamera) noseX = -noseX; 
 
     const leftEar = (landmarks[234].x - 0.5) * width;
     const rightEar = (landmarks[454].x - 0.5) * width;
     const faceW = Math.abs(rightEar - leftEar);
 
     sprite.position.set(noseX, noseY, 0.1); 
-    
-    // [핵심 수정] 조명 크기를 얼굴의 4배로 키워서 전체를 덮게 함
     const size = faceW * 4.0; 
     sprite.scale.set(size, size, 1);
 }
 
-// 이벤트
+// [광고 시스템]
+function showAdModal(source) {
+    adTriggerSource = source; // 누가 불렀는지 저장
+    
+    if (source === 'multi') {
+        adTitle.innerText = "👨‍👩‍👧‍👦 단체 사진 잠금 해제";
+        adDesc.innerText = "2명 이상 감지되었습니다. 광고를 보고 활성화하세요.";
+    } else if (source === 'flawless') {
+        adTitle.innerText = "✨ 잡티 제거 잠금 해제";
+        adDesc.innerText = "도자기 피부 기능을 사용하려면 광고를 시청하세요.";
+    }
+    
+    isAdShowing = true;
+    adModal.style.display = "flex";
+}
+
+if(closeAdBtn) {
+    closeAdBtn.addEventListener('click', () => {
+        isAdShowing = false;
+        adModal.style.display = "none";
+        
+        // 보상 지급
+        if (adTriggerSource === 'multi') {
+            isMultiUnlocked = true;
+        } else if (adTriggerSource === 'flawless') {
+            isFlawlessUnlocked = true;
+            flawlessToggle.checked = true; // 자동으로 켜줌
+            updateCSSFilters();
+        }
+    });
+}
+
+// [이벤트] 토글 클릭 시 광고 체크
+flawlessToggle.addEventListener('click', (e) => {
+    // 이미 해제되었으면 그냥 둠
+    if (isFlawlessUnlocked) {
+        updateCSSFilters();
+        return;
+    }
+    
+    // 해제 안 됐으면 체크 취소하고 광고 띄움
+    e.preventDefault(); 
+    showAdModal('flawless');
+});
+
+
 slimRange.addEventListener('input', (e) => {
     const val = parseFloat(e.target.value);
     SETTINGS.slimStrength = (1.0 - val) / 0.15;
@@ -347,7 +406,8 @@ slimRange.addEventListener('input', (e) => {
 
 beautyRange.addEventListener('input', (e) => {
     const val = parseInt(e.target.value); 
-    SETTINGS.beautyOpacity = (val - 100) / 50 * 0.6; 
+    SETTINGS.beautyOpacity = (val - 100) / 50 * 0.6;
+    updateCSSFilters();
 });
 
 switchBtn.addEventListener('click', () => {
@@ -359,7 +419,7 @@ captureBtn.addEventListener('click', () => {
     renderer.render(scene, camera);
     const dataURL = renderer.domElement.toDataURL("image/png");
     const link = document.createElement('a');
-    link.download = `luma_beauty.png`;
+    link.download = `luma_capture.png`;
     link.href = dataURL;
     link.click();
 });
