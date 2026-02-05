@@ -4,27 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-    <title>Luma Camera - AI Beauty & V-Line (Webcam Filter)</title>
-
-    <meta name="description" content="Free Online AI Camera. Chin slimming, V-line, Soft Skin filter, and Lighting. No installation required. (AI 카메라, 턱선 보정, 소프트 스킨, 뽀샤시, 무설치 웹캠 필터 / 在线AI美颜相机, 瘦脸, 柔肤 / AI美肌カメラ, 小顔補正, ソフト肌)">
-
-    <meta name="keywords" content="
-        AI Camera, Chin Slimming, Soft Skin, Beauty Filter, Webcam, No Install,
-        AI 카메라, 턱선 보정, 브이라인, 뽀샤시, 소프트 스킨, 피부 보정, 웹캠 필터, 온라인 성형,
-        AI相机, 瘦脸, 美颜, 柔肤, 磨皮, 在线相机,
-        AIカメラ, 小顔, 輪郭補正, 美肌, ソフト肌, Webカメラ
-    ">
-
-    <meta name="author" content="Luma Camera">
-    <meta name="robots" content="index, follow"> 
-    
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="Luma Camera - AI Beauty Filter">
-    <meta property="og:description" content="Real-time AI Chin Slimming & Soft Skin Filter. Try it now on your browser!">
-    <meta property="og:image" content="./assets/icons/icon-512.png"> <link rel="manifest" href="manifest.json">
+    <title>Luma Camera - AI Beauty & AR Filter</title>
+    <meta name="description" content="AI Beauty Camera with Makeup, Filters, and AR features.">
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
     <link rel="stylesheet" href="style.css">
     
+    <link rel="apple-touch-icon" href="assets/icons/icon-180.png">
+
     <script src="./assets/libs/three.min.js"></script>
 
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7272957295128241"
@@ -65,43 +52,60 @@
                 <button class="lang-btn" data-lang="cn">🇨🇳</button>
                 <button class="lang-btn" data-lang="jp">🇯🇵</button>
             </div>
-            
             <button id="install-btn" style="display:none;">📲 App Install</button>
-
             <button id="switch-camera-btn" aria-label="Switch Camera">🔄</button>
         </div>
 
         <div id="ui-layer">
-            <div id="controls-container">
-                <div class="control-group">
-                    <span id="label-slim">턱선</span> 
-                    <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
-                </div>
-                <div class="control-group">
-                    <span id="label-beauty">뽀샤시</span> 
-                    <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
-                </div>
+            <div id="controls-container" class="expanded-controls">
                 
-                <div class="control-group toggle-group">
-                    <span id="label-flawless">잡티 제거</span>
-                    <label class="switch">
-                        <input type="checkbox" id="flawless-toggle">
-                        <span class="slider round"></span>
-                    </label>
+                <div class="control-section">
+                    <div class="control-group">
+                        <span id="label-slim">턱선</span> 
+                        <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
+                    </div>
+                    <div class="control-group">
+                        <span id="label-beauty">뽀샤시</span> 
+                        <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
+                    </div>
                 </div>
+
+                <div class="control-section">
+                    <span class="section-title" id="label-filter">🎨 필터</span>
+                    <div class="button-group filter-buttons">
+                        <button class="filter-btn active" data-filter="none">Normal</button>
+                        <button class="filter-btn locked" data-filter="vintage">Vintage</button>
+                        <button class="filter-btn locked" data-filter="mono">Mono</button>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <span class="section-title" id="label-lip">💄 립스틱</span>
+                    <div class="color-picker-group">
+                        <button class="color-btn active" data-color="none" style="background:transparent; border: 2px solid #fff;">X</button>
+                        <button class="color-btn locked" data-color="pink" style="background:#FF69B4;"></button>
+                        <button class="color-btn locked" data-color="red" style="background:#FF0000;"></button>
+                        <button class="color-btn locked" data-color="coral" style="background:#FF7F50;"></button>
+                    </div>
+                </div>
+                 <div class="control-section">
+                    <span class="section-title" id="label-acc">🔴 액세서리</span>
+                    <div class="button-group acc-buttons">
+                        <button class="acc-btn active" data-acc="none">None</button>
+                        <button class="acc-btn locked" data-acc="nose">Rudolph</button>
+                    </div>
+                </div>
+
             </div>
             <button id="capture-btn" aria-label="Take Photo"></button>
         </div>
     </div>
 
     <script type="module" src="app.js"></script>
-
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('SW 등록 성공'))
-                    .catch(err => console.log('SW 등록 실패', err));
+                navigator.serviceWorker.register('./sw.js');
             });
         }
     </script>
