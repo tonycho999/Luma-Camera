@@ -1,16 +1,15 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정]
+// [설정] 강력한 떨림 방지 적용
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
     warpRadius: 0.4,
-    // [NEW] 떨림 방지 강도 (0.0 ~ 1.0)
-    // 0.1: 아주 부드럽지만 반응이 느림
-    // 0.8: 반응이 빠르지만 조금 떨림
-    // 0.5: 적당함
-    smoothFactor: 0.3 
+    
+    // [핵심] 떨림 방지 (숫자가 작을수록 안 떨림)
+    // 0.3 -> 0.08로 대폭 낮춤 (아주 부드럽게 이동)
+    smoothFactor: 0.08 
 };
 
 // 전역 변수
@@ -31,8 +30,8 @@ let renderer, scene, camera;
 let videoTexture, meshPlane;
 let originalPositions;
 
-// [NEW] 이전 프레임의 랜드마크를 기억할 변수 (떨림 방지용)
-let previousLandmarks = null; 
+// [최적화] 이전 프레임 좌표 저장용 배열 (메모리 재사용)
+let previousLandmarks = []; 
 
 // ==========================================
 // 1. Three.js 초기화
@@ -104,15 +103,22 @@ function onWindowResize() {
 }
 
 // ==========================================
-// 2. AI 모델 로드
+// 2. AI 모델 로드 (엄격 모드 적용)
 // ==========================================
 async function createFaceLandmarker() {
   const filesetResolver = await FilesetResolver.forVisionTasks("./assets/libs/wasm");
   faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-    baseOptions: { modelAssetPath: "./assets/models/face_landmarker.task", delegate: "GPU" },
+    baseOptions: { 
+        modelAssetPath: "./assets/models/face_landmarker.task", 
+        delegate: "GPU" 
+    },
     outputFaceBlendshapes: false,
     runningMode: "VIDEO",
-    numFaces: 1
+    numFaces: 1,
+    // [중요] 신뢰도 기준을 높여서 이상한 값은 무시
+    minFaceDetectionConfidence: 0.5,
+    minFacePresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5
   });
   startWebcam();
 }
@@ -141,7 +147,7 @@ function startWebcam() {
 }
 
 // ==========================================
-// 4. 렌더링 루프 (스무딩 적용)
+// 4. 렌더링 루프 (강력한 스무딩)
 // ==========================================
 function renderLoop() {
     let results;
@@ -153,7 +159,7 @@ function renderLoop() {
         }
     }
 
-    // 메쉬 초기화
+    // 메쉬 초기화 (항상 원본에서 시작)
     const positions = meshPlane.geometry.attributes.position.array;
     for (let i = 0; i < positions.length; i++) {
         positions[i] = originalPositions[i];
@@ -162,28 +168,32 @@ function renderLoop() {
     if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
         const currentLandmarks = results.faceLandmarks[0];
 
-        // [핵심] 떨림 방지 (Smoothing)
-        if (previousLandmarks) {
-            for (let i = 0; i < currentLandmarks.length; i++) {
-                // 이전 위치와 현재 위치 사이를 부드럽게 이동 (Lerp)
-                // 공식: 현재값 = 이전값 + (새값 - 이전값) * 0.3
-                const lx = previousLandmarks[i].x + (currentLandmarks[i].x - previousLandmarks[i].x) * SETTINGS.smoothFactor;
-                const ly = previousLandmarks[i].y + (currentLandmarks[i].y - previousLandmarks[i].y) * SETTINGS.smoothFactor;
-                
-                // 보정된 값을 현재 값으로 덮어쓰기 (화면엔 보정된 값이 나감)
-                currentLandmarks[i].x = lx;
-                currentLandmarks[i].y = ly;
+        // 첫 프레임이면 초기화
+        if (previousLandmarks.length !== currentLandmarks.length) {
+            previousLandmarks = [];
+            for(let lm of currentLandmarks) {
+                previousLandmarks.push({x: lm.x, y: lm.y, z: lm.z});
             }
         }
-        // 현재 보정된 값을 '이전 값'으로 저장해둠
-        // (깊은 복사가 필요함)
-        previousLandmarks = JSON.parse(JSON.stringify(currentLandmarks));
+
+        // [핵심] 랜드마크 스무딩 (Exponential Moving Average)
+        for (let i = 0; i < currentLandmarks.length; i++) {
+            // 공식: 현재값 = 이전값 + (새값 - 이전값) * 0.08
+            // 0.08은 아주 작은 숫자라 변화가 천천히 일어납니다 (물속에서 움직이는 느낌)
+            const lx = previousLandmarks[i].x + (currentLandmarks[i].x - previousLandmarks[i].x) * SETTINGS.smoothFactor;
+            const ly = previousLandmarks[i].y + (currentLandmarks[i].y - previousLandmarks[i].y) * SETTINGS.smoothFactor;
+            
+            // 보정된 값을 현재 값으로 사용
+            currentLandmarks[i].x = lx;
+            currentLandmarks[i].y = ly;
+            
+            // 다음 프레임을 위해 저장
+            previousLandmarks[i].x = lx;
+            previousLandmarks[i].y = ly;
+        }
 
         // 보정된 랜드마크로 성형 적용
         applyFaceWarping(currentLandmarks, positions);
-    } else {
-        // 얼굴 놓치면 초기화
-        previousLandmarks = null;
     }
     
     // 거울 모드
@@ -214,25 +224,31 @@ function applyFaceWarping(landmarks, positions) {
         };
     }
 
+    // 턱선 포인트들
     const chin = toWorld(landmarks[152]);
     const leftJaw = toWorld(landmarks[132]);
     const rightJaw = toWorld(landmarks[361]);
     const nose = toWorld(landmarks[1]);
 
     const faceSize = Math.abs(leftJaw.x - rightJaw.x);
-    const radius = faceSize * 1.5;
+    // 영향 범위를 살짝 줄여서(1.5 -> 1.3) 불필요한 배경 움직임 최소화
+    const radius = faceSize * 1.3; 
     const force = SETTINGS.slimStrength * 0.15;
 
+    // 최적화: 전체 버텍스를 다 돌지만, 거리가 멀면 빠르게 스킵
     for (let i = 0; i < positions.length; i += 3) {
         const vx = positions[i];
         const vy = positions[i+1];
 
+        // 턱 끝과의 거리 계산
         const dx = vx - chin.x;
         const dy = vy - chin.y;
-        const distSq = dx*dx + dy*dy;
         
+        // 간단한 사각형 박스 체크로 먼저 걸러내기 (속도 향상)
+        if (Math.abs(dx) > radius || Math.abs(dy) > radius) continue;
+
+        const distSq = dx*dx + dy*dy;
         if (distSq < radius * radius) {
-            const dist = Math.sqrt(distSq);
             const factor = Math.exp(-distSq / (2 * (radius * 0.4) * (radius * 0.4)));
             
             const dirX = nose.x - vx;
@@ -251,16 +267,9 @@ slimRange.addEventListener('input', (e) => {
     if(SETTINGS.slimStrength < 0) SETTINGS.slimStrength = 0;
 });
 
-// 뽀샤시는 아직 미구현이지만 에러 방지용
-if(beautyRange) {
-    beautyRange.addEventListener('input', (e) => {
-        // 나중에 쉐이더로 구현
-    });
-}
-
 switchBtn.addEventListener('click', () => {
     isFrontCamera = !isFrontCamera;
-    previousLandmarks = null; // 카메라 바꾸면 초기화
+    previousLandmarks = []; // 초기화
     startWebcam();
 });
 
