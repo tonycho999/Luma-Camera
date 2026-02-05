@@ -13,13 +13,13 @@ const beautyRange = document.getElementById("beauty-range");
 let faceLandmarker;
 let lastVideoTime = -1;
 let results = undefined;
-let isFrontCamera = true; // 현재 카메라 상태 (true: 전면, false: 후면)
+let isFrontCamera = true;
 let currentStream = null;
 
-// 필터 설정값 (슬라이더와 연결됨)
+// 필터 설정값
 const SETTINGS = {
-    slimFactor: 0.96,
-    beautyLevel: 1.15
+    slimFactor: 0.96, // 1.0 = 원본, 낮을수록 갸름함
+    beautyLevel: 1.15 // 1.0 = 원본, 높을수록 뽀샤시
 };
 
 // 1. AI 모델 로딩
@@ -34,16 +34,14 @@ async function createFaceLandmarker() {
   startWebcam();
 }
 
-// 2. 웹캠 시작 (카메라 전환 기능 포함)
+// 2. 웹캠 시작
 function startWebcam() {
-  // 기존 스트림이 있다면 멈춤 (카메라 전환 시 필요)
   if (currentStream) {
       currentStream.getTracks().forEach(track => track.stop());
   }
 
   const constraints = {
     video: {
-      // 전면이면 'user', 후면이면 'environment'
       facingMode: isFrontCamera ? "user" : "environment",
       width: { ideal: 1280 },
       height: { ideal: 720 }
@@ -56,13 +54,13 @@ function startWebcam() {
     video.addEventListener("loadeddata", predictWebcam);
   }).catch(err => {
       console.error("카메라 에러:", err);
-      alert("카메라를 켤 수 없습니다.");
+      // alert("카메라 권한을 확인해주세요.");
   });
 }
 
-// 3. 실시간 그리기
+// 3. 실시간 그리기 (수정된 로직)
 async function predictWebcam() {
-  if (!currentStream) return; // 스트림 없으면 중단
+  if (!currentStream) return;
 
   // 캔버스 크기 동기화
   if(video.videoWidth > 0 && canvasElement.width !== video.videoWidth){
@@ -76,39 +74,48 @@ async function predictWebcam() {
     results = faceLandmarker.detectForVideo(video, startTimeMs);
   }
 
+  // 화면 지우기
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
   
-  // [설정 적용] 슬라이더 값 가져오기
+  // [1] 뽀샤시 필터 적용
   const brightness = SETTINGS.beautyLevel;
-  const saturate = SETTINGS.beautyLevel; // 뽀샤시는 밝기와 채도를 같이 올림
-  
+  const saturate = Math.max(1.0, SETTINGS.beautyLevel - 0.1); 
   canvasCtx.filter = `brightness(${brightness}) saturate(${saturate}) contrast(1.05)`;
   
-  // [슬림 모드 계산]
-  const slimWidth = canvasElement.width * SETTINGS.slimFactor;
-  const offsetX = (canvasElement.width - slimWidth) / 2;
+  // [2] 슬림 모드 (핵심 수정 부분)
+  // 이전: 가로를 줄임 -> 화면이 움직임 (X)
+  // 지금: 세로를 늘림 -> 화면이 꽉 찬 상태 유지 (O)
   
-  // 거울 모드 처리 (전면 카메라일 때만 좌우 반전)
+  // 슬림 팩터가 0.95라면 가로가 95%로 보이는 효과를 내야 함.
+  // 이를 위해 세로를 역수(1/0.95)만큼 늘려서 그림.
+  const heightScale = 1 / SETTINGS.slimFactor; 
+  const newHeight = canvasElement.height * heightScale;
+  const offsetY = (canvasElement.height - newHeight) / 2; // 중앙 정렬 (위아래가 살짝 잘림)
+
   canvasCtx.save();
+  
+  // 거울 모드 (전면 카메라일 때만)
   if (isFrontCamera) {
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
   }
 
-  // 그리기
-  canvasCtx.drawImage(video, offsetX, 0, slimWidth, canvasElement.height);
+  // 변경된 높이로 그리기 (가로 폭은 캔버스 꽉 채움)
+  canvasCtx.drawImage(
+      video, 
+      0, offsetY, canvasElement.width, newHeight
+  );
   
   canvasCtx.restore();
-  canvasCtx.filter = 'none'; // 필터 초기화
+  canvasCtx.filter = 'none';
   
   window.requestAnimationFrame(predictWebcam);
 }
 
 // ========================
-// [이벤트 리스너] 버튼 동작
+// 이벤트 리스너
 // ========================
 
-// 1. 슬라이더 조절 이벤트
 slimRange.addEventListener('input', (e) => {
     SETTINGS.slimFactor = parseFloat(e.target.value);
 });
@@ -117,18 +124,21 @@ beautyRange.addEventListener('input', (e) => {
     SETTINGS.beautyLevel = parseFloat(e.target.value);
 });
 
-// 2. 카메라 전환 버튼
 switchBtn.addEventListener('click', () => {
-    isFrontCamera = !isFrontCamera; // 상태 반전
-    startWebcam(); // 카메라 재시작
+    isFrontCamera = !isFrontCamera;
+    startWebcam();
 });
 
-// 3. 촬영 버튼
 captureBtn.addEventListener('click', () => {
+    // 촬영 시 찰칵 효과
     canvasElement.style.opacity = "0.5";
     setTimeout(() => canvasElement.style.opacity = "1", 100);
+    
     const link = document.createElement('a');
-    link.download = 'luma-photo.png';
+    const now = new Date();
+    const fileName = `luma_${now.getFullYear()}${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}.png`;
+    
+    link.download = fileName;
     link.href = canvasElement.toDataURL("image/png");
     link.click();
 });
