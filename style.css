@@ -315,3 +315,52 @@ input:checked + .slider:before {
 .slider.round:before {
     border-radius: 50%;
 }
+
+/* 상단 바 레이아웃 수정 */
+#top-bar {
+    position: absolute;
+    top: 20px;
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: space-between; /* 양쪽 끝으로 정렬 */
+    align-items: center;
+    padding: 0 20px;
+    z-index: 100;
+    box-sizing: border-box;
+}
+
+/* 언어 버튼 그룹 */
+#lang-group {
+    display: flex;
+    gap: 8px;
+    background: rgba(0,0,0,0.5);
+    padding: 5px 10px;
+    border-radius: 20px;
+}
+
+.lang-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    filter: grayscale(100%); /* 기본은 흑백 */
+    transition: transform 0.2s, filter 0.2s;
+}
+
+.lang-btn:hover, .lang-btn.active {
+    transform: scale(1.2);
+    filter: grayscale(0%); /* 선택되면 컬러 */
+}
+
+/* 카메라 전환 버튼 스타일 보강 */
+#switch-camera-btn {
+    background: rgba(0,0,0,0.5);
+    border: none;
+    font-size: 24px;
+    padding: 8px;
+    border-radius: 50%;
+    cursor: pointer;
+    color: white;
+}
