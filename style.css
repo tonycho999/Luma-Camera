@@ -364,3 +364,25 @@ input:checked + .slider:before {
     cursor: pointer;
     color: white;
 }
+
+/* 설치 버튼 스타일 */
+#install-btn {
+    background: linear-gradient(45deg, #ff0055, #ff5500);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    animation: pulse 2s infinite; /* 깜빡이는 효과 */
+    margin-right: 10px;
+}
+
+/* 시선 집중 효과 */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
