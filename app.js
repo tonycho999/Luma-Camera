@@ -1,15 +1,15 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정] 스톱 모션(0.2초) & 조명 안정화
+// [설정] 0.1초 스텝 & 조명 위치 버그 수정
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
     
     // [핵심] 화면 갱신 간격 (ms)
-    // 200ms = 0.2초 (초당 5프레임)
-    // 이 시간 동안은 화면이 멈춰있으므로 떨림이 물리적으로 불가능함
-    updateInterval: 200, 
+    // 100ms = 0.1초 (초당 10프레임)
+    // 0.2초보다 부드럽지만, 여전히 떨림은 물리적으로 차단됨
+    updateInterval: 100, 
 
     // 조명 강도
     beautyOpacity: 0.4 
@@ -17,7 +17,7 @@ const SETTINGS = {
 
 const video = document.getElementById("webcam");
 const canvasElement = document.getElementById("output_canvas");
-const statusMsg = document.getElementById("ai-status"); // (index.html에 있다면 사용)
+const statusMsg = document.getElementById("ai-status");
 const slimRange = document.getElementById("slim-range");
 const beautyRange = document.getElementById("beauty-range");
 const captureBtn = document.getElementById("capture-btn");
@@ -37,7 +37,6 @@ let originalPositions;
 
 // [조명 변수]
 let beautySprite; 
-let currentOpacity = 0; // 조명 깜빡임 방지용 부드러운 투명도
 
 // ==========================================
 // 1. Three.js 초기화
@@ -49,7 +48,7 @@ function initThreeJS() {
     renderer = new THREE.WebGLRenderer({ 
         canvas: canvasElement, 
         antialias: false, 
-        preserveDrawingBuffer: true // 캡처를 위해 버퍼 유지
+        preserveDrawingBuffer: true 
     });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -73,11 +72,6 @@ function initThreeJS() {
     videoTexture.format = THREE.RGBFormat;
     videoTexture.generateMipmaps = false;
     
-    // [중요] 비디오가 자동으로 갱신되지 않게 막음 (우리가 원할 때만 update)
-    // 이것이 '0.2초 멈춤'의 핵심입니다.
-    // 주의: 일부 브라우저 호환성을 위해 autoUpdate를 false로 두거나, 
-    // renderLoop에서 needsUpdate를 제어합니다.
-
     // 평면 생성
     const geometry = new THREE.PlaneGeometry(frustumWidth, frustumHeight, 64, 64);
     const count = geometry.attributes.position.count;
@@ -119,14 +113,14 @@ function createBeautyLight() {
     const material = new THREE.SpriteMaterial({ 
         map: texture, 
         transparent: true,
-        opacity: 0, // 처음엔 투명
+        opacity: 0, 
         blending: THREE.AdditiveBlending,
-        depthTest: false // 항상 맨 위에 보이게
+        depthTest: false
     });
 
     beautySprite = new THREE.Sprite(material);
     beautySprite.scale.set(1, 1, 1);
-    beautySprite.renderOrder = 999; // 가장 나중에 그림
+    beautySprite.renderOrder = 999; 
     scene.add(beautySprite);
 }
 
@@ -183,31 +177,24 @@ function startWebcam() {
 }
 
 // ==========================================
-// 4. 렌더링 루프 (0.2초 스텝)
+// 4. 렌더링 루프 (0.1초 스텝)
 // ==========================================
 function renderLoop(timestamp) {
     requestAnimationFrame(renderLoop);
 
-    // [핵심] 시간이 0.2초(200ms) 지나지 않았으면 아무것도 안 함 (화면 정지)
+    // [핵심] 0.1초(100ms)마다 업데이트
     if (timestamp - lastUpdateTime < SETTINGS.updateInterval) {
         return; 
     }
     lastUpdateTime = timestamp;
 
-    // --- 여기부터는 0.2초마다 실행됨 (5 FPS) ---
-
-    // 1. 비디오 텍스처 수동 업데이트 (이때만 화면이 바뀜)
-    // (Three.js VideoTexture는 기본적으로 매 프레임 업데이트되지만, 
-    // 우리가 렌더링을 0.2초마다 하므로 결과적으로 화면도 그때만 바뀝니다)
-    
-    // 2. AI 인식 수행
     let results;
     if (video.readyState >= 2 && faceLandmarker) {
         let startTimeMs = performance.now();
         results = faceLandmarker.detectForVideo(video, startTimeMs);
     }
 
-    // 3. 메쉬 리셋
+    // 메쉬 리셋
     const positions = meshPlane.geometry.attributes.position.array;
     for (let i = 0; i < positions.length; i++) {
         positions[i] = originalPositions[i];
@@ -219,31 +206,26 @@ function renderLoop(timestamp) {
         faceFound = true;
         const landmarks = results.faceLandmarks[0];
 
-        // 워핑 적용 (0.2초마다 갱신되므로 잔상은 없지만 영상이 끊겨 보임 -> 스톱모션 효과)
+        // 워핑 적용
         applyFaceWarping(landmarks, positions);
         
-        // 조명 위치 이동
+        // 조명 위치 이동 (좌우 반전 보정 포함)
         updateBeautyPosition(landmarks);
     }
 
-    // [조명 깜빡임 방지]
-    // 얼굴을 찾으면 목표 투명도(SETTING)로, 못 찾으면 0으로 부드럽게 변함
+    // 조명 투명도 갱신
     const targetOpacity = faceFound ? SETTINGS.beautyOpacity : 0;
-    // 0.2초마다 갱신되므로 lerp 대신 과감하게 이동하거나, 
-    // 부드럽게 하려면 애니메이션 프레임을 분리해야 하지만, 
-    // 여기선 심플하게 0.2초 단위로 값 갱신
     if (beautySprite) {
         beautySprite.material.opacity = targetOpacity;
     }
 
-    // 4. 거울 모드
+    // 거울 모드 (메쉬 좌우 반전)
     if (isFrontCamera) {
         meshPlane.scale.x = -1;
     } else {
         meshPlane.scale.x = 1;
     }
 
-    // 5. 최종 그리기
     meshPlane.geometry.attributes.position.needsUpdate = true;
     renderer.render(scene, camera);
 }
@@ -269,7 +251,7 @@ function applyFaceWarping(landmarks, positions) {
     const faceWidth = Math.abs(toWorld(landmarks[234]).x - toWorld(landmarks[454]).x);
 
     const radius = faceWidth * 1.3; 
-    const force = SETTINGS.slimStrength * 0.2; // 0.2초마다 갱신되므로 강도를 조금 더 줌
+    const force = SETTINGS.slimStrength * 0.2; 
 
     for (let i = 0; i < positions.length; i += 3) {
         const vx = positions[i];
@@ -289,23 +271,29 @@ function applyFaceWarping(landmarks, positions) {
     }
 }
 
+// [핵심] 조명 위치 계산 (거울모드 버그 수정)
 function updateBeautyPosition(landmarks) {
     if (!beautySprite) return;
 
     const width = camera.right - camera.left;
     const height = camera.top - camera.bottom;
 
-    // 코 위치
-    const noseX = (landmarks[1].x - 0.5) * width;
+    // 코 위치 계산 (0.0 ~ 1.0 -> 월드 좌표)
+    let noseX = (landmarks[1].x - 0.5) * width;
     const noseY = -(landmarks[1].y - 0.5) * height;
 
-    // 얼굴 크기
+    // [중요] 전면 카메라(거울모드)일 경우, 조명 위치도 반대로 뒤집어야 함!
+    // 메쉬는 scale.x = -1로 뒤집히지만, 스프라이트는 독립적이라서 직접 좌표를 뒤집어줘야 함.
+    if (isFrontCamera) {
+        noseX = -noseX; 
+    }
+
     const leftEar = (landmarks[234].x - 0.5) * width;
     const rightEar = (landmarks[454].x - 0.5) * width;
     const faceW = Math.abs(rightEar - leftEar);
 
     beautySprite.position.set(noseX, noseY, 0.1); 
-    const size = faceW * 2.0; // 얼굴보다 2배 크게 퍼지는 빛
+    const size = faceW * 2.0; 
     beautySprite.scale.set(size, size, 1);
 }
 
@@ -318,7 +306,6 @@ slimRange.addEventListener('input', (e) => {
 
 beautyRange.addEventListener('input', (e) => {
     const val = parseInt(e.target.value); 
-    // 100~150 -> 0.0 ~ 0.6 투명도
     SETTINGS.beautyOpacity = (val - 100) / 50 * 0.6; 
 });
 
@@ -331,7 +318,7 @@ captureBtn.addEventListener('click', () => {
     renderer.render(scene, camera);
     const dataURL = renderer.domElement.toDataURL("image/png");
     const link = document.createElement('a');
-    link.download = `luma_stopmotion.png`;
+    link.download = `luma_photo.png`;
     link.href = dataURL;
     link.click();
 });
