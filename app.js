@@ -1,18 +1,19 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정] 0.1초 스텝 & 조명 위치 버그 수정
+// [설정] 다중 얼굴(최대 5명) & 0.1초 스텝
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
     
-    // [핵심] 화면 갱신 간격 (ms)
-    // 100ms = 0.1초 (초당 10프레임)
-    // 0.2초보다 부드럽지만, 여전히 떨림은 물리적으로 차단됨
+    // 화면 갱신 간격 (0.1초)
     updateInterval: 100, 
 
     // 조명 강도
-    beautyOpacity: 0.4 
+    beautyOpacity: 0.4,
+    
+    // 최대 인식 인원 수
+    maxFaces: 5
 };
 
 const video = document.getElementById("webcam");
@@ -27,7 +28,7 @@ let faceLandmarker;
 let isFrontCamera = true;
 let currentStream = null;
 
-// 시간 관리 변수
+// 시간 관리
 let lastUpdateTime = 0;
 
 // Three.js 변수
@@ -35,8 +36,8 @@ let renderer, scene, camera;
 let videoTexture, meshPlane;
 let originalPositions;
 
-// [조명 변수]
-let beautySprite; 
+// [조명 변수들] -> 이제 배열(Array)로 관리합니다
+let beautySprites = []; 
 
 // ==========================================
 // 1. Three.js 초기화
@@ -72,7 +73,6 @@ function initThreeJS() {
     videoTexture.format = THREE.RGBFormat;
     videoTexture.generateMipmaps = false;
     
-    // 평면 생성
     const geometry = new THREE.PlaneGeometry(frustumWidth, frustumHeight, 64, 64);
     const count = geometry.attributes.position.count;
     originalPositions = new Float32Array(count * 3);
@@ -88,19 +88,20 @@ function initThreeJS() {
     meshPlane = new THREE.Mesh(geometry, material);
     scene.add(meshPlane);
 
-    createBeautyLight();
+    // [중요] 조명을 미리 여러 개 만들어둡니다 (Pool 방식)
+    createBeautyLightsPool();
 
     window.addEventListener('resize', onWindowResize);
 }
 
-// 부드러운 조명 생성
-function createBeautyLight() {
+// 조명 5개 미리 생성 (숨겨둠)
+function createBeautyLightsPool() {
+    // 텍스처는 1개만 만들어서 공유 (메모리 절약)
     const canvas = document.createElement('canvas');
     canvas.width = 128;
     canvas.height = 128;
     const context = canvas.getContext('2d');
     
-    // 핑크빛 화사한 조명
     const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
     gradient.addColorStop(0, 'rgba(255, 235, 235, 1.0)'); 
     gradient.addColorStop(0.5, 'rgba(255, 245, 245, 0.4)'); 
@@ -110,7 +111,7 @@ function createBeautyLight() {
     context.fillRect(0, 0, 128, 128);
 
     const texture = new THREE.CanvasTexture(canvas);
-    const material = new THREE.SpriteMaterial({ 
+    const materialBase = new THREE.SpriteMaterial({ 
         map: texture, 
         transparent: true,
         opacity: 0, 
@@ -118,10 +119,14 @@ function createBeautyLight() {
         depthTest: false
     });
 
-    beautySprite = new THREE.Sprite(material);
-    beautySprite.scale.set(1, 1, 1);
-    beautySprite.renderOrder = 999; 
-    scene.add(beautySprite);
+    // 최대 인원수만큼 스프라이트 생성
+    for(let i=0; i<SETTINGS.maxFaces; i++) {
+        const sprite = new THREE.Sprite(materialBase.clone()); // 재질 복사
+        sprite.scale.set(0, 0, 1); // 일단 안 보이게 0으로
+        sprite.renderOrder = 999; 
+        scene.add(sprite);
+        beautySprites.push(sprite);
+    }
 }
 
 function onWindowResize() {
@@ -140,7 +145,7 @@ function onWindowResize() {
 }
 
 // ==========================================
-// 2. AI 모델
+// 2. AI 모델 (다중 얼굴 설정)
 // ==========================================
 async function createFaceLandmarker() {
     const filesetResolver = await FilesetResolver.forVisionTasks("./assets/libs/wasm");
@@ -148,7 +153,8 @@ async function createFaceLandmarker() {
         baseOptions: { modelAssetPath: "./assets/models/face_landmarker.task", delegate: "GPU" },
         outputFaceBlendshapes: false,
         runningMode: "VIDEO",
-        numFaces: 1
+        // [핵심] 5명까지 인식
+        numFaces: SETTINGS.maxFaces 
     });
     startWebcam();
 }
@@ -177,12 +183,11 @@ function startWebcam() {
 }
 
 // ==========================================
-// 4. 렌더링 루프 (0.1초 스텝)
+// 4. 렌더링 루프 (0.1초마다 실행)
 // ==========================================
 function renderLoop(timestamp) {
     requestAnimationFrame(renderLoop);
 
-    // [핵심] 0.1초(100ms)마다 업데이트
     if (timestamp - lastUpdateTime < SETTINGS.updateInterval) {
         return; 
     }
@@ -200,26 +205,31 @@ function renderLoop(timestamp) {
         positions[i] = originalPositions[i];
     }
 
-    let faceFound = false;
+    // 일단 모든 조명 숨기기 (초기화)
+    beautySprites.forEach(sprite => {
+        sprite.scale.set(0,0,1);
+        sprite.material.opacity = 0;
+    });
 
     if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
-        faceFound = true;
-        const landmarks = results.faceLandmarks[0];
-
-        // 워핑 적용
-        applyFaceWarping(landmarks, positions);
         
-        // 조명 위치 이동 (좌우 반전 보정 포함)
-        updateBeautyPosition(landmarks);
+        // [반복문] 발견된 모든 얼굴에 대해 실행
+        // landmarksList: 각 사람의 랜드마크 배열
+        results.faceLandmarks.forEach((landmarks, index) => {
+            
+            // 1. 성형 적용 (누적됨)
+            applyFaceWarping(landmarks, positions);
+            
+            // 2. 조명 위치 이동 (인덱스에 맞는 스프라이트 사용)
+            if (index < beautySprites.length) {
+                const sprite = beautySprites[index];
+                updateBeautyPosition(landmarks, sprite);
+                sprite.material.opacity = SETTINGS.beautyOpacity; // 켜기
+            }
+        });
     }
 
-    // 조명 투명도 갱신
-    const targetOpacity = faceFound ? SETTINGS.beautyOpacity : 0;
-    if (beautySprite) {
-        beautySprite.material.opacity = targetOpacity;
-    }
-
-    // 거울 모드 (메쉬 좌우 반전)
+    // 거울 모드
     if (isFrontCamera) {
         meshPlane.scale.x = -1;
     } else {
@@ -265,25 +275,23 @@ function applyFaceWarping(landmarks, positions) {
         
         if (distSq < radius * radius) {
             const factor = Math.exp(-distSq / (2 * (radius * 0.4) * (radius * 0.4)));
+            // 이미 다른 사람에 의해 이동된 위치(positions)에 추가로 더함 (누적)
             positions[i] += (nose.x - vx) * factor * force;
             positions[i+1] += (nose.y - vy) * factor * force * 0.5;
         }
     }
 }
 
-// [핵심] 조명 위치 계산 (거울모드 버그 수정)
-function updateBeautyPosition(landmarks) {
-    if (!beautySprite) return;
+// 특정 스프라이트를 해당 얼굴로 이동
+function updateBeautyPosition(landmarks, sprite) {
+    if (!sprite) return;
 
     const width = camera.right - camera.left;
     const height = camera.top - camera.bottom;
 
-    // 코 위치 계산 (0.0 ~ 1.0 -> 월드 좌표)
     let noseX = (landmarks[1].x - 0.5) * width;
     const noseY = -(landmarks[1].y - 0.5) * height;
 
-    // [중요] 전면 카메라(거울모드)일 경우, 조명 위치도 반대로 뒤집어야 함!
-    // 메쉬는 scale.x = -1로 뒤집히지만, 스프라이트는 독립적이라서 직접 좌표를 뒤집어줘야 함.
     if (isFrontCamera) {
         noseX = -noseX; 
     }
@@ -292,9 +300,9 @@ function updateBeautyPosition(landmarks) {
     const rightEar = (landmarks[454].x - 0.5) * width;
     const faceW = Math.abs(rightEar - leftEar);
 
-    beautySprite.position.set(noseX, noseY, 0.1); 
+    sprite.position.set(noseX, noseY, 0.1); 
     const size = faceW * 2.0; 
-    beautySprite.scale.set(size, size, 1);
+    sprite.scale.set(size, size, 1);
 }
 
 // 이벤트
@@ -318,7 +326,7 @@ captureBtn.addEventListener('click', () => {
     renderer.render(scene, camera);
     const dataURL = renderer.domElement.toDataURL("image/png");
     const link = document.createElement('a');
-    link.download = `luma_photo.png`;
+    link.download = `luma_friends.png`;
     link.href = dataURL;
     link.click();
 });
