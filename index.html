@@ -17,12 +17,10 @@
 
     <div id="app-container">
         
-        <div id="ai-status" style="display:none;">AI 분석중...</div>
-
         <div id="ad-modal" style="display:none;">
             <div class="ad-content">
-                <h3>🎉 단체 사진 기능 잠금 해제</h3>
-                <p>2명 이상 감지되었습니다!<br>광고를 닫으면 바로 적용됩니다.</p>
+                <h3 id="ad-title">🎁 기능 잠금 해제</h3>
+                <p id="ad-desc">광고를 보고 기능을 활성화하세요.</p>
                 
                 <div class="ad-box">
                     <ins class="adsbygoogle"
@@ -36,7 +34,7 @@
                     </script>
                 </div>
 
-                <button id="close-ad-btn">광고 닫고 계속하기</button>
+                <button id="close-ad-btn">광고 닫고 활성화</button>
             </div>
         </div>
 
@@ -54,8 +52,16 @@
                     <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
                 </div>
                 <div class="control-group">
-                    <span>뽀샤시</span> 
+                    <span>조명</span> 
                     <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
+                </div>
+                
+                <div class="control-group toggle-group">
+                    <span>잡티 제거</span>
+                    <label class="switch">
+                        <input type="checkbox" id="flawless-toggle">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
             </div>
             <button id="capture-btn"></button>
