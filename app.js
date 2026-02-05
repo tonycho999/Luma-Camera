@@ -1,62 +1,62 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정] 용어 변경 (소프트 스킨)
+// [설정] 앱 설치 버튼 로직 추가
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
     updateInterval: 100, 
     maxFaces: 20,
-    
-    // 조명 강도
     lightIntensity: 0.4, 
-
-    // 필터 강도 (소프트 스킨)
     flawlessBlur: 1.5,      
     flawlessContrast: 85    
 };
 
-// [번역 데이터 수정됨]
+// [번역 데이터 - 설치 버튼 추가]
 const TRANSLATIONS = {
     ko: {
         slim: "턱선",
         beauty: "뽀샤시(조명)",
-        flawless: "소프트 스킨", // [수정] 더 감성적인 표현
+        flawless: "소프트 스킨",
         ad_multi_title: "👨‍👩‍👧‍👦 단체 사진 잠금 해제",
         ad_multi_desc: "2명 이상 감지되었습니다. 광고를 보고 활성화하세요.",
         ad_flawless_title: "✨ 소프트 스킨 잠금 해제",
-        ad_flawless_desc: "부드러운 피부결 필터를 사용하려면 광고를 시청하세요.", // [수정] 기대치 조절
-        ad_close: "광고 닫고 활성화"
+        ad_flawless_desc: "부드러운 피부결 필터를 사용하려면 광고를 시청하세요.",
+        ad_close: "광고 닫고 활성화",
+        install: "앱 설치 📲" // [NEW]
     },
     en: {
         slim: "Slim",
         beauty: "Lighting",
-        flawless: "Soft Skin", // [수정]
+        flawless: "Soft Skin",
         ad_multi_title: "👨‍👩‍👧‍👦 Unlock Group Photo",
         ad_multi_desc: "2+ people detected. Watch ad to unlock.",
         ad_flawless_title: "✨ Unlock Soft Skin",
         ad_flawless_desc: "Watch ad to enable soft skin texture filter.",
-        ad_close: "Close & Enable"
+        ad_close: "Close & Enable",
+        install: "Install App 📲"
     },
     cn: {
         slim: "瘦脸",
         beauty: "补光",
-        flawless: "柔肤", // [수정] 부드러운 피부
+        flawless: "柔肤",
         ad_multi_title: "👨‍👩‍👧‍👦 解锁多人模式",
         ad_multi_desc: "检测到多人。观看广告以解锁。",
         ad_flawless_title: "✨ 解锁柔肤滤镜",
         ad_flawless_desc: "观看广告以启用柔肤模式。",
-        ad_close: "关闭并启用"
+        ad_close: "关闭并启用",
+        install: "下载应用 📲"
     },
     jp: {
         slim: "輪郭",
         beauty: "照明",
-        flawless: "ソフト肌", // [수정]
+        flawless: "ソフト肌",
         ad_multi_title: "👨‍👩‍👧‍👦 グループ写真の解除",
         ad_multi_desc: "2人以上を検出しました。広告を見て解除します。",
         ad_flawless_title: "✨ ソフト肌の解除",
         ad_flawless_desc: "広告を見てソフト肌フィルターを有効にします。",
-        ad_close: "閉じて有効化"
+        ad_close: "閉じて有効化",
+        install: "アプリ入手 📲"
     }
 };
 
@@ -69,6 +69,10 @@ const beautyRange = document.getElementById("beauty-range");
 const captureBtn = document.getElementById("capture-btn");
 const switchBtn = document.getElementById("switch-camera-btn");
 const flawlessToggle = document.getElementById("flawless-toggle");
+
+// [설치 버튼]
+const installBtn = document.getElementById("install-btn");
+let deferredPrompt; // 설치 이벤트 저장용
 
 const labelSlim = document.getElementById("label-slim");
 const labelBeauty = document.getElementById("label-beauty");
@@ -99,6 +103,48 @@ let videoAspect = 1.0;
 let screenAspect = 1.0;
 
 // ==========================================
+// [NEW] 앱 설치 로직 (PWA)
+// ==========================================
+
+// 1. 브라우저가 "설치 가능한 상태"라고 신호를 보낼 때
+window.addEventListener('beforeinstallprompt', (e) => {
+    // 기본 배너 뜨는거 막고, 우리가 만든 버튼 보여주기 위해 저장
+    e.preventDefault();
+    deferredPrompt = e;
+    
+    // 이미 앱으로 실행 중이 아니면 버튼 표시
+    if (!window.matchMedia('(display-mode: standalone)').matches) {
+        installBtn.style.display = 'block';
+    }
+});
+
+// 2. 설치 버튼 클릭 시
+if(installBtn) {
+    installBtn.addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        
+        // 설치 팝업 띄우기
+        deferredPrompt.prompt();
+        
+        // 유저가 설치했는지 취소했는지 확인
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User response: ${outcome}`);
+        
+        // 한번 썼으니 초기화
+        deferredPrompt = null;
+        
+        // 설치했거나 닫으면 버튼 숨김
+        installBtn.style.display = 'none';
+    });
+}
+
+// 3. 이미 앱이 설치되어 실행 중이면 버튼 숨김 (한번 더 체크)
+if (window.matchMedia('(display-mode: standalone)').matches) {
+    if(installBtn) installBtn.style.display = 'none';
+}
+
+
+// ==========================================
 // 0. 언어 설정 & 자동 감지
 // ==========================================
 function setLanguage(lang) {
@@ -111,6 +157,7 @@ function setLanguage(lang) {
     labelBeauty.innerText = t.beauty;
     labelFlawless.innerText = t.flawless;
     closeAdBtn.innerText = t.ad_close;
+    if(installBtn) installBtn.innerText = t.install; // 설치 버튼 번역
 
     langBtns.forEach(btn => {
         if(btn.dataset.lang === lang) btn.classList.add("active");
@@ -480,7 +527,6 @@ slimRange.addEventListener('input', (e) => {
 
 beautyRange.addEventListener('input', (e) => {
     const val = parseInt(e.target.value); 
-    // 100 ~ 150 -> 0.0 ~ 0.8
     SETTINGS.lightIntensity = (val - 100) / 50 * 0.8;
 });
 
