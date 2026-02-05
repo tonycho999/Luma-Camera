@@ -1,43 +1,45 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정] 느리지만 안정적인 버전
+// [설정] 극강의 안정성 모드
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
-    warpRadius: 0.4,
+    beautyLevel: 120,
     
-    // 떨림 방지 (0.1 정도면 적당)
-    smoothFactor: 0.1,
+    // [핵심] 데드존 (이 값보다 적게 움직이면 아예 화면 갱신을 안 함 = 떨림 0)
+    deadzone: 1.5, // 픽셀 단위 (높을수록 안정적이나 반응이 둔함)
     
-    // [NEW] 뽀샤시 초기값 (120%)
-    beautyLevel: 120 
+    // 분석 시간 (손 뗐을 때 안정화하는 시간 ms)
+    analyzeTime: 600 
 };
 
-// 요소 가져오기
+// DOM 요소
 const video = document.getElementById("webcam");
 const canvasElement = document.getElementById("output_canvas");
-const statusMsg = document.getElementById("ai-status"); // 안내 문구
-
-const captureBtn = document.getElementById("capture-btn");
-const switchBtn = document.getElementById("switch-camera-btn");
+const statusMsg = document.getElementById("ai-status");
 const slimRange = document.getElementById("slim-range");
 const beautyRange = document.getElementById("beauty-range");
+const captureBtn = document.getElementById("capture-btn");
+const switchBtn = document.getElementById("switch-camera-btn");
 
-// 변수들
+// 변수
 let faceLandmarker;
 let isFrontCamera = true;
 let currentStream = null;
 let lastVideoTime = -1;
 
-// [NEW] 속도 조절용 카운터
-let frameCounter = 0; 
-
 // Three.js 변수
 let renderer, scene, camera;
 let videoTexture, meshPlane;
 let originalPositions;
-let previousLandmarks = []; 
+
+// [안정화 로직 변수들]
+let isAdjusting = false;   // 슬라이더 조작 중인가?
+let isAnalyzing = false;   // 데이터 수집 중인가?
+let landmarkHistory = [];  // 평균값을 내기 위한 데이터 버퍼
+let lockedLandmarks = null; // 고정된 랜드마크 (떨림 방지용)
+let analyzeTimeout = null; // 타이머
 
 // ==========================================
 // 1. Three.js 초기화
@@ -73,7 +75,7 @@ function initThreeJS() {
     videoTexture.format = THREE.RGBFormat;
     videoTexture.generateMipmaps = false;
 
-    // 메쉬 생성 (64x64)
+    // 64x64 메쉬
     const geometry = new THREE.PlaneGeometry(frustumWidth, frustumHeight, 64, 64);
     const count = geometry.attributes.position.count;
     originalPositions = new Float32Array(count * 3);
@@ -89,8 +91,7 @@ function initThreeJS() {
     meshPlane = new THREE.Mesh(geometry, material);
     scene.add(meshPlane);
 
-    // [중요] 시작하자마자 뽀샤시 적용
-    applyBeautyFilter();
+    applyBeautyFilter(); // 초기 뽀샤시
 
     window.addEventListener('resize', onWindowResize);
 }
@@ -111,29 +112,22 @@ function onWindowResize() {
 }
 
 // ==========================================
-// 2. AI 모델 로드
+// 2. AI 모델
 // ==========================================
 async function createFaceLandmarker() {
-    statusMsg.style.display = "block"; // "분석중..." 표시
-    
+    showStatus("AI 초기화 중...");
     const filesetResolver = await FilesetResolver.forVisionTasks("./assets/libs/wasm");
     faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-        baseOptions: { 
-            modelAssetPath: "./assets/models/face_landmarker.task", 
-            delegate: "GPU" 
-        },
+        baseOptions: { modelAssetPath: "./assets/models/face_landmarker.task", delegate: "GPU" },
         outputFaceBlendshapes: false,
         runningMode: "VIDEO",
-        numFaces: 1,
-        minFaceDetectionConfidence: 0.5,
-        minFacePresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5
+        numFaces: 1
     });
     startWebcam();
 }
 
 // ==========================================
-// 3. 웹캠 시작
+// 3. 웹캠
 // ==========================================
 function startWebcam() {
     if (currentStream) {
@@ -150,26 +144,19 @@ function startWebcam() {
         video.srcObject = stream;
         video.onloadeddata = () => {
             video.play();
+            showStatus("얼굴을 찾는 중...");
             renderLoop();
         };
     }).catch(err => console.error("카메라 에러:", err));
 }
 
 // ==========================================
-// 4. 렌더링 루프 (천천히 업데이트)
+// 4. 렌더링 루프 (스마트 고정 로직)
 // ==========================================
 function renderLoop() {
-    // 1. 프레임 카운트 증가
-    frameCounter++;
-
+    // 1. AI 인식
     let results;
-    
-    // [핵심] 3프레임마다 1번씩만 AI 돌림 (속도 조절)
-    // 60fps 화면 -> 20fps AI 업데이트
-    // 이렇게 하면 떨림이 물리적으로 줄어듭니다.
-    const shouldUpdateAI = (frameCounter % 3 === 0);
-
-    if (shouldUpdateAI && video.readyState >= 2 && faceLandmarker) {
+    if (video.readyState >= 2 && faceLandmarker) {
         let startTimeMs = performance.now();
         if (lastVideoTime !== video.currentTime) {
             lastVideoTime = video.currentTime;
@@ -177,43 +164,61 @@ function renderLoop() {
         }
     }
 
-    // 메쉬 초기화
+    // 2. 메쉬 리셋 (항상 깨끗한 상태에서 시작)
     const positions = meshPlane.geometry.attributes.position.array;
     for (let i = 0; i < positions.length; i++) {
         positions[i] = originalPositions[i];
     }
 
-    // AI 결과가 있으면 (혹은 이전 결과 유지)
+    // 3. 로직 분기
     if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
-        // 얼굴 찾음 -> "분석중" 메시지 숨김
-        statusMsg.style.display = "none";
+        // 얼굴 찾음
+        if(statusMsg.innerText === "얼굴을 찾는 중...") hideStatus();
 
-        const currentLandmarks = results.faceLandmarks[0];
+        const rawLandmarks = results.faceLandmarks[0];
 
-        if (previousLandmarks.length !== currentLandmarks.length) {
-            previousLandmarks = [];
-            for(let lm of currentLandmarks) {
-                previousLandmarks.push({x: lm.x, y: lm.y});
+        // A. 슬라이더 조절 중 -> 성형 안 함 (원본만 보여줌)
+        if (isAdjusting) {
+            // 아무것도 안 함 (메쉬 리셋 상태 유지)
+        }
+        // B. 분석 중 (데이터 수집) -> 성형 안 함, 데이터만 모음
+        else if (isAnalyzing) {
+            landmarkHistory.push(rawLandmarks);
+        }
+        // C. 평상시 (고정된 데이터로 성형)
+        else {
+            // 고정된 데이터가 없으면 현재 데이터로 즉시 고정
+            if (!lockedLandmarks) {
+                lockedLandmarks = JSON.parse(JSON.stringify(rawLandmarks));
+            } else {
+                // [데드존 체크]
+                // 현재 얼굴이 고정된 얼굴과 얼마나 차이나는지 계산
+                let diff = 0;
+                // 코(1), 턱(152) 등 주요 포인트 5개만 비교해서 속도 향상
+                const points = [1, 152, 33, 263, 132]; 
+                for(let idx of points) {
+                    const dx = (rawLandmarks[idx].x - lockedLandmarks[idx].x) * canvasElement.width;
+                    const dy = (rawLandmarks[idx].y - lockedLandmarks[idx].y) * canvasElement.height;
+                    diff += Math.sqrt(dx*dx + dy*dy);
+                }
+                diff /= points.length; // 평균 이동 거리 (픽셀)
+
+                // 많이 움직였으면(데드존 이탈) -> 서서히 따라감 (Lerp)
+                if (diff > SETTINGS.deadzone) {
+                     for(let i=0; i<rawLandmarks.length; i++) {
+                        lockedLandmarks[i].x += (rawLandmarks[i].x - lockedLandmarks[i].x) * 0.1; // 0.1 속도로 따라감
+                        lockedLandmarks[i].y += (rawLandmarks[i].y - lockedLandmarks[i].y) * 0.1;
+                     }
+                }
+                // 적게 움직였으면 -> lockedLandmarks 값 그대로 사용 (업데이트 안 함 = 떨림 0)
             }
+
+            // 결정된 lockedLandmarks로 성형 적용
+            applyFaceWarping(lockedLandmarks, positions);
         }
 
-        // 스무딩 (이전 위치와 섞기)
-        for (let i = 0; i < currentLandmarks.length; i++) {
-            const lx = previousLandmarks[i].x + (currentLandmarks[i].x - previousLandmarks[i].x) * SETTINGS.smoothFactor;
-            const ly = previousLandmarks[i].y + (currentLandmarks[i].y - previousLandmarks[i].y) * SETTINGS.smoothFactor;
-            
-            currentLandmarks[i].x = lx;
-            currentLandmarks[i].y = ly;
-            previousLandmarks[i].x = lx;
-            previousLandmarks[i].y = ly;
-        }
-
-        applyFaceWarping(currentLandmarks, positions);
-    
     } else {
-        // 얼굴 못 찾음 -> 일정 시간 지나면 "분석중" 띄울 수도 있음 (여기선 생략)
-        // 만약 AI 업데이트 턴인데 얼굴이 없으면, 
-        // 그냥 원본 메쉬(초기화된 상태)가 그려짐
+        // 얼굴 놓침
     }
 
     // 거울 모드
@@ -229,7 +234,7 @@ function renderLoop() {
 }
 
 // ==========================================
-// 5. 워핑 및 뽀샤시
+// 5. 워핑 & 뽀샤시
 // ==========================================
 function applyFaceWarping(landmarks, positions) {
     if (SETTINGS.slimStrength <= 0.01) return;
@@ -257,12 +262,13 @@ function applyFaceWarping(landmarks, positions) {
         const vx = positions[i];
         const vy = positions[i+1];
         
-        // 거리 체크
+        // 1차 필터: 사각형 범위 (빠름)
+        if (Math.abs(vx - chin.x) > radius || Math.abs(vy - chin.y) > radius) continue;
+
         const dx = vx - chin.x;
         const dy = vy - chin.y;
-        if (Math.abs(dx) > radius || Math.abs(dy) > radius) continue;
-
         const distSq = dx*dx + dy*dy;
+        
         if (distSq < radius * radius) {
             const factor = Math.exp(-distSq / (2 * (radius * 0.4) * (radius * 0.4)));
             positions[i] += (nose.x - vx) * factor * force;
@@ -271,33 +277,106 @@ function applyFaceWarping(landmarks, positions) {
     }
 }
 
-// [핵심] 뽀샤시 필터 적용 함수
 function applyBeautyFilter() {
-    const val = SETTINGS.beautyLevel; // ex: 120
-    const brightness = val / 100;     // 1.2
-    const saturate = val / 100;       // 1.2
-    
-    // Blur를 조금 더 강하게 줘서 피부 잡티를 가림 (0.5px)
-    // 대비(Contrast)는 살짝 낮춰서 부드럽게
-    canvasElement.style.filter = `brightness(${brightness}) saturate(${saturate}) contrast(0.95) blur(0.5px)`;
+    const val = SETTINGS.beautyLevel;
+    const brightness = val / 100; 
+    const saturate = val / 100;
+    // blur를 0.8px로 더 강하게 줘서 확실히 뽀샤시하게
+    canvasElement.style.filter = `brightness(${brightness}) saturate(${saturate}) contrast(0.95) blur(0.8px)`;
 }
 
-// 이벤트 핸들러
-slimRange.addEventListener('input', (e) => {
+// ==========================================
+// 6. UI 이벤트 핸들러 (핵심 로직)
+// ==========================================
+
+// 1. 슬라이더 잡았을 때 (조작 시작)
+function onSliderStart() {
+    isAdjusting = true;
+    showStatus("설정 조절 중... (화면 고정)");
+    // 락을 풀어버림
+    lockedLandmarks = null;
+}
+
+// 2. 슬라이더 놓았을 때 (조작 끝 -> 분석 시작)
+function onSliderEnd() {
+    isAdjusting = false;
+    isAnalyzing = true;
+    landmarkHistory = []; // 버퍼 비우기
+    showStatus("AI 정밀 분석 및 안정화 중...");
+
+    // 일정 시간 후 분석 종료
+    setTimeout(() => {
+        isAnalyzing = false;
+        hideStatus();
+        
+        // 모인 데이터 평균내서 'Lock' 걸기
+        if (landmarkHistory.length > 0) {
+            const avgLandmarks = JSON.parse(JSON.stringify(landmarkHistory[0]));
+            const len = landmarkHistory.length;
+            
+            // 모든 프레임의 좌표를 더함
+            for(let i=1; i<len; i++) {
+                const frame = landmarkHistory[i];
+                for(let k=0; k<frame.length; k++) {
+                    avgLandmarks[k].x += frame[k].x;
+                    avgLandmarks[k].y += frame[k].y;
+                    avgLandmarks[k].z += frame[k].z;
+                }
+            }
+            // 나누기
+            for(let k=0; k<avgLandmarks.length; k++) {
+                avgLandmarks[k].x /= len;
+                avgLandmarks[k].y /= len;
+                avgLandmarks[k].z /= len;
+            }
+            
+            // 최종 고정값 설정!
+            lockedLandmarks = avgLandmarks;
+        }
+    }, SETTINGS.analyzeTime); // 0.6초 동안 수집
+}
+
+
+// 슬라이더 이벤트 연결
+// 'input': 드래그 중 계속 발생
+// 'change': 손 뗐을 때 발생 (PC/모바일 공통 지원을 위해 pointer 이벤트 사용 권장하지만 간단히 처리)
+slimRange.addEventListener('mousedown', onSliderStart);
+slimRange.addEventListener('touchstart', onSliderStart);
+
+slimRange.addEventListener('change', (e) => {
+    // 값 적용
     const val = parseFloat(e.target.value);
     SETTINGS.slimStrength = (1.0 - val) / 0.15;
     if(SETTINGS.slimStrength < 0) SETTINGS.slimStrength = 0;
+    
+    // 분석 시작
+    onSliderEnd();
 });
+// 터치 끝났을 때도 change가 안 먹을 수 있어서 추가 처리
+slimRange.addEventListener('touchend', () => {
+    const val = parseFloat(slimRange.value);
+    SETTINGS.slimStrength = (1.0 - val) / 0.15;
+    onSliderEnd();
+});
+
 
 beautyRange.addEventListener('input', (e) => {
     SETTINGS.beautyLevel = parseInt(e.target.value);
     applyBeautyFilter();
 });
 
+// 안내 문구 제어
+function showStatus(text) {
+    statusMsg.innerText = text;
+    statusMsg.style.display = "block";
+}
+function hideStatus() {
+    statusMsg.style.display = "none";
+}
+
 switchBtn.addEventListener('click', () => {
     isFrontCamera = !isFrontCamera;
-    previousLandmarks = [];
-    statusMsg.style.display = "block"; // 카메라 바꿀 때도 메시지 표시
+    lockedLandmarks = null;
     startWebcam();
 });
 
