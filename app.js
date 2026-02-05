@@ -1,18 +1,17 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
 
 // ==========================================
-// [설정] 최후의 수단: 강제 고정 모드
+// [설정] 떨림 차단 & 얼굴 조명
 // ==========================================
 const SETTINGS = {
-    slimStrength: 0.3,
-    beautyLevel: 120,
+    slimStrength: 0.3, 
     
-    // [핵심] 고정 강도 (높을수록 안 떨림)
-    // 0.9 = 90%는 이전 위치 유지, 10%만 반영 (엄청 뻑뻑함)
-    anchorStrength: 0.92, 
+    // [핵심 1] 떨림 차단 임계값 (이 값보다 적게 움직이면 절대 갱신 안 함)
+    // 3.5픽셀: 숨 쉴 때의 미세한 움직임은 무시함 (고정됨)
+    movementThreshold: 3.5, 
 
-    // [핵심] 무시 임계값 (이 값보다 작게 움직이면 무시)
-    ignoreThreshold: 2.5 // 픽셀 단위
+    // [핵심 2] 얼굴 조명 강도 (0.0 ~ 1.0)
+    beautyOpacity: 0.4 
 };
 
 const video = document.getElementById("webcam");
@@ -33,8 +32,11 @@ let renderer, scene, camera;
 let videoTexture, meshPlane;
 let originalPositions;
 
+// [얼굴 조명용 변수]
+let beautySprite; 
+
 // [떨림 방지용 변수]
-let stableLandmarks = []; // 화면에 그려지고 있는 '진짜' 좌표
+let currentDisplayLandmarks = null; // 현재 화면에 그려진 좌표
 
 // ==========================================
 // 1. Three.js 초기화
@@ -70,6 +72,7 @@ function initThreeJS() {
     videoTexture.format = THREE.RGBFormat;
     videoTexture.generateMipmaps = false;
 
+    // 비디오 평면
     const geometry = new THREE.PlaneGeometry(frustumWidth, frustumHeight, 64, 64);
     const count = geometry.attributes.position.count;
     originalPositions = new Float32Array(count * 3);
@@ -85,8 +88,40 @@ function initThreeJS() {
     meshPlane = new THREE.Mesh(geometry, material);
     scene.add(meshPlane);
 
-    applyBeautyFilter();
+    // [NEW] 얼굴 조명 (Sprite) 생성
+    createBeautyLight();
+
     window.addEventListener('resize', onWindowResize);
+}
+
+// 얼굴만 밝혀주는 '조명(Sprite)' 만들기
+function createBeautyLight() {
+    // 캔버스에 그라데이션 원을 그려서 텍스처로 만듦
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const context = canvas.getContext('2d');
+    
+    // 흰색 -> 투명 그라데이션 (얼굴 하이라이트 효과)
+    const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, 'rgba(255, 230, 230, 1.0)'); // 중심: 살짝 핑크빛 흰색
+    gradient.addColorStop(0.4, 'rgba(255, 240, 240, 0.5)'); 
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');   // 외곽: 투명
+
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 128, 128);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ 
+        map: texture, 
+        transparent: true,
+        opacity: SETTINGS.beautyOpacity,
+        blending: THREE.AdditiveBlending // 빛을 더해주는 효과
+    });
+
+    beautySprite = new THREE.Sprite(material);
+    beautySprite.scale.set(0, 0, 1); // 처음엔 안 보이게
+    scene.add(beautySprite);
 }
 
 function onWindowResize() {
@@ -143,7 +178,7 @@ function startWebcam() {
 }
 
 // ==========================================
-// 4. 렌더링 루프 (강력한 안정화 적용)
+// 4. 렌더링 루프 (떨림 차단 & 조명 추적)
 // ==========================================
 function renderLoop() {
     let results;
@@ -165,44 +200,49 @@ function renderLoop() {
         if(statusMsg) statusMsg.style.display = "none";
         
         const rawLandmarks = results.faceLandmarks[0];
+        let shouldUpdate = false;
 
-        // [초기화] 첫 프레임이면 그냥 저장
-        if (stableLandmarks.length === 0) {
-            for(let lm of rawLandmarks) {
-                stableLandmarks.push({x: lm.x, y: lm.y});
+        // [떨림 차단 로직]
+        if (!currentDisplayLandmarks) {
+            // 처음엔 무조건 업데이트
+            currentDisplayLandmarks = JSON.parse(JSON.stringify(rawLandmarks));
+            shouldUpdate = true;
+        } else {
+            // 움직임 계산 (코, 턱, 눈 등 주요 포인트만 비교)
+            let totalDiff = 0;
+            const checkPoints = [1, 152, 33, 263, 132]; // 5개 포인트
+            
+            for (let idx of checkPoints) {
+                const dx = (rawLandmarks[idx].x - currentDisplayLandmarks[idx].x) * canvasElement.width;
+                const dy = (rawLandmarks[idx].y - currentDisplayLandmarks[idx].y) * canvasElement.height;
+                totalDiff += Math.sqrt(dx*dx + dy*dy);
+            }
+            const avgDiff = totalDiff / checkPoints.length;
+
+            // [판단] 움직임이 임계값(3.5px)을 넘었는가?
+            if (avgDiff > SETTINGS.movementThreshold) {
+                // 크게 움직였으므로 업데이트 (부드럽게 따라가기)
+                // 0.2 속도로 Lerp
+                for (let i = 0; i < rawLandmarks.length; i++) {
+                    currentDisplayLandmarks[i].x += (rawLandmarks[i].x - currentDisplayLandmarks[i].x) * 0.2;
+                    currentDisplayLandmarks[i].y += (rawLandmarks[i].y - currentDisplayLandmarks[i].y) * 0.2;
+                }
+                shouldUpdate = true;
+            } else {
+                // 조금 움직였으면 업데이트 안 함 (이전 좌표 그대로 유지 -> 고정됨)
+                shouldUpdate = false; 
             }
         }
 
-        // [핵심 알고리즘] 앵커(Anchor) 방식
-        // 새로 들어온 좌표(raw)가 기존 좌표(stable)와 얼마나 다른지 검사
-        for (let i = 0; i < rawLandmarks.length; i++) {
-            const oldX = stableLandmarks[i].x;
-            const oldY = stableLandmarks[i].y;
-            const newX = rawLandmarks[i].x;
-            const newY = rawLandmarks[i].y;
-
-            // 픽셀 단위 차이 계산 (대략적)
-            const diffX = Math.abs((newX - oldX) * canvasElement.width);
-            const diffY = Math.abs((newY - oldY) * canvasElement.height);
-            const dist = Math.sqrt(diffX*diffX + diffY*diffY);
-
-            // 1. 변화량이 너무 작으면(2.5픽셀 미만) -> 무시! (이전 좌표 유지)
-            if (dist < SETTINGS.ignoreThreshold) {
-                // 업데이트 안 함 (old 값 유지)
-            } 
-            // 2. 변화량이 크면 -> 아주 천천히 따라감 (0.08 속도)
-            else {
-                // 공식: 이전값 * 0.92 + 새값 * 0.08
-                stableLandmarks[i].x = oldX * SETTINGS.anchorStrength + newX * (1 - SETTINGS.anchorStrength);
-                stableLandmarks[i].y = oldY * SETTINGS.anchorStrength + newY * (1 - SETTINGS.anchorStrength);
-            }
-        }
-
-        // 이렇게 계산된 '아주 둔감한' 좌표로 성형을 합니다.
-        applyFaceWarping(stableLandmarks, positions);
+        // 결정된 좌표(currentDisplayLandmarks)로 성형 수행
+        applyFaceWarping(currentDisplayLandmarks, positions);
+        
+        // [얼굴 조명 이동]
+        updateBeautyPosition(currentDisplayLandmarks);
 
     } else {
-        // 얼굴 놓치면 초기화 하지 않고 마지막 모습 유지 (깜빡임 방지)
+        // 얼굴 없으면 조명 숨김
+        if(beautySprite) beautySprite.scale.set(0,0,1);
     }
 
     if (isFrontCamera) {
@@ -217,7 +257,7 @@ function renderLoop() {
 }
 
 // ==========================================
-// 5. 워핑 & 뽀샤시
+// 5. 워핑 & 조명 위치
 // ==========================================
 function applyFaceWarping(landmarks, positions) {
     if (SETTINGS.slimStrength <= 0.01) return;
@@ -233,20 +273,16 @@ function applyFaceWarping(landmarks, positions) {
     }
 
     const chin = toWorld(landmarks[152]);
-    const leftJaw = toWorld(landmarks[132]);
-    const rightJaw = toWorld(landmarks[361]);
     const nose = toWorld(landmarks[1]);
+    const faceWidth = Math.abs(toWorld(landmarks[234]).x - toWorld(landmarks[454]).x); // 얼굴 너비
 
-    const faceSize = Math.abs(leftJaw.x - rightJaw.x);
-    const radius = faceSize * 1.5;
+    const radius = faceWidth * 1.2; // 얼굴 크기에 맞춰 영향력 조절
     const force = SETTINGS.slimStrength * 0.15;
 
-    // 최적화된 워핑 루프
     for (let i = 0; i < positions.length; i += 3) {
         const vx = positions[i];
         const vy = positions[i+1];
         
-        // 1차 필터 (박스 체크)
         if (Math.abs(vx - chin.x) > radius || Math.abs(vy - chin.y) > radius) continue;
 
         const dx = vx - chin.x;
@@ -261,13 +297,33 @@ function applyFaceWarping(landmarks, positions) {
     }
 }
 
-function applyBeautyFilter() {
-    const val = SETTINGS.beautyLevel;
-    const brightness = val / 100; 
-    const saturate = val / 100;
-    // blur를 0.5px로 줘서 뽀샤시 효과 (너무 강하면 흐려보임)
-    canvasElement.style.filter = `brightness(${brightness}) saturate(${saturate}) contrast(0.95) blur(0.5px)`;
+// [NEW] 얼굴 위치에 조명(Sprite) 이동시키기
+function updateBeautyPosition(landmarks) {
+    if (!beautySprite) return;
+
+    const width = camera.right - camera.left;
+    const height = camera.top - camera.bottom;
+
+    // 코(1) 위치 가져오기
+    const noseX = (landmarks[1].x - 0.5) * width;
+    const noseY = -(landmarks[1].y - 0.5) * height;
+
+    // 얼굴 너비 계산 (귀 대 귀)
+    const leftEar = (landmarks[234].x - 0.5) * width;
+    const rightEar = (landmarks[454].x - 0.5) * width;
+    const faceW = Math.abs(rightEar - leftEar);
+
+    // 조명 위치 & 크기 설정
+    beautySprite.position.set(noseX, noseY, 0.1); // 얼굴보다 살짝 앞에(0.1)
+    
+    // 얼굴 크기보다 살짝 크게 조명 생성 (1.5배)
+    const size = faceW * 1.8; 
+    beautySprite.scale.set(size, size, 1);
+    
+    // 투명도 조절
+    beautySprite.material.opacity = SETTINGS.beautyOpacity;
 }
+
 
 // 이벤트 핸들러
 slimRange.addEventListener('input', (e) => {
@@ -277,13 +333,14 @@ slimRange.addEventListener('input', (e) => {
 });
 
 beautyRange.addEventListener('input', (e) => {
-    SETTINGS.beautyLevel = parseInt(e.target.value);
-    applyBeautyFilter();
+    // 100~150 -> 0.0 ~ 0.8 투명도로 변환
+    const val = parseInt(e.target.value); // 100 ~ 150
+    SETTINGS.beautyOpacity = (val - 100) / 50 * 0.8; 
 });
 
 switchBtn.addEventListener('click', () => {
     isFrontCamera = !isFrontCamera;
-    stableLandmarks = []; // 초기화
+    currentDisplayLandmarks = null;
     startWebcam();
 });
 
@@ -291,7 +348,7 @@ captureBtn.addEventListener('click', () => {
     renderer.render(scene, camera);
     const dataURL = renderer.domElement.toDataURL("image/png");
     const link = document.createElement('a');
-    link.download = `luma_warp.png`;
+    link.download = `luma_photo.png`;
     link.href = dataURL;
     link.click();
 });
