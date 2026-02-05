@@ -4,16 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Luma Camera</title>
+    
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
     <link rel="stylesheet" href="style.css">
     <script src="./assets/libs/three.min.js"></script>
+
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7272957295128241"
+     crossorigin="anonymous"></script>
 </head>
 <body>
 
     <div id="app-container">
         
-        <div id="ai-status">AI 얼굴 분석중...</div>
+        <div id="ai-status" style="display:none;">AI 분석중...</div>
+
+        <div id="ad-modal" style="display:none;">
+            <div class="ad-content">
+                <h3>🎉 단체 사진 기능 잠금 해제</h3>
+                <p>2명 이상 감지되었습니다!<br>광고를 닫으면 바로 적용됩니다.</p>
+                
+                <div class="ad-box">
+                    <ins class="adsbygoogle"
+                         style="display:block"
+                         data-ad-client="ca-pub-7272957295128241"
+                         data-ad-slot="1234567890" 
+                         data-ad-format="auto"
+                         data-full-width-responsive="true"></ins>
+                    <script>
+                         (adsbygoogle = window.adsbygoogle || []).push({});
+                    </script>
+                </div>
+
+                <button id="close-ad-btn">광고 닫고 계속하기</button>
+            </div>
+        </div>
 
         <video id="webcam" autoplay playsinline muted style="display:none"></video>
         <canvas id="output_canvas"></canvas>
