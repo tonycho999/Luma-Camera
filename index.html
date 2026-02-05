@@ -4,20 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Luma Camera</title>
-    
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
-
     <link rel="stylesheet" href="style.css">
-
     <script src="./assets/libs/three.min.js"></script>
 </head>
 <body>
 
     <div id="app-container">
         
-        <video id="webcam" autoplay playsinline muted style="display:none"></video>
+        <div id="ai-status">AI 얼굴 분석중...</div>
 
+        <video id="webcam" autoplay playsinline muted style="display:none"></video>
         <canvas id="output_canvas"></canvas>
 
         <div id="top-bar">
@@ -25,7 +23,6 @@
         </div>
 
         <div id="ui-layer">
-            
             <div id="controls-container">
                 <div class="control-group">
                     <span>턱선</span> 
@@ -33,10 +30,9 @@
                 </div>
                 <div class="control-group">
                     <span>뽀샤시</span> 
-                    <input type="range" id="beauty-range" min="1.0" max="1.5" step="0.05" value="1.15">
+                    <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
                 </div>
             </div>
-
             <button id="capture-btn"></button>
         </div>
     </div>
