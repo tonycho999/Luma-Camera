@@ -16,10 +16,12 @@
     ">
 
     <meta name="author" content="Luma Camera">
-    <meta name="robots" content="index, follow"> <meta property="og:type" content="website">
+    <meta name="robots" content="index, follow"> 
+    
+    <meta property="og:type" content="website">
     <meta property="og:title" content="Luma Camera - AI Beauty Filter">
     <meta property="og:description" content="Real-time AI Chin Slimming & Soft Skin Filter. Try it now on your browser!">
-    <meta property="og:image" content="./assets/icon.png"> <link rel="manifest" href="manifest.json">
+    <meta property="og:image" content="./assets/icons/icon-512.png"> <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
     <link rel="stylesheet" href="style.css">
     
@@ -64,7 +66,9 @@
                 <button class="lang-btn" data-lang="jp">🇯🇵</button>
             </div>
             
-            <button id="switch-camera-btn">🔄</button>
+            <button id="install-btn" style="display:none;">📲 App Install</button>
+
+            <button id="switch-camera-btn" aria-label="Switch Camera">🔄</button>
         </div>
 
         <div id="ui-layer">
@@ -86,7 +90,7 @@
                     </label>
                 </div>
             </div>
-            <button id="capture-btn"></button>
+            <button id="capture-btn" aria-label="Take Photo"></button>
         </div>
     </div>
 
@@ -95,7 +99,9 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js');
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW 등록 성공'))
+                    .catch(err => console.log('SW 등록 실패', err));
             });
         }
     </script>
