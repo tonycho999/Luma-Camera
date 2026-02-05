@@ -9,12 +9,14 @@
     <meta name="theme-color" content="#000000">
 
     <link rel="stylesheet" href="style.css">
+
+    <script src="./assets/libs/three.min.js"></script>
 </head>
 <body>
 
     <div id="app-container">
         
-        <video id="webcam" autoplay playsinline muted></video>
+        <video id="webcam" autoplay playsinline muted style="display:none"></video>
 
         <canvas id="output_canvas"></canvas>
 
@@ -26,10 +28,12 @@
             
             <div id="controls-container">
                 <div class="control-group">
-                    <span>턱선</span> <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
+                    <span>턱선</span> 
+                    <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
                 </div>
                 <div class="control-group">
-                    <span>뽀샤시</span> <input type="range" id="beauty-range" min="1.0" max="1.5" step="0.05" value="1.15">
+                    <span>뽀샤시</span> 
+                    <input type="range" id="beauty-range" min="1.0" max="1.5" step="0.05" value="1.15">
                 </div>
             </div>
 
