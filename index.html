@@ -6,6 +6,7 @@
     
     <title>Luma Camera - AI Beauty & AR Filter</title>
     <meta name="description" content="AI Beauty Camera with Makeup, Filters, and AR features.">
+    
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
     <link rel="stylesheet" href="style.css">
@@ -33,9 +34,6 @@
                          data-ad-slot="1234567890" 
                          data-ad-format="auto"
                          data-full-width-responsive="true"></ins>
-                    <script>
-                         (adsbygoogle = window.adsbygoogle || []).push({});
-                    </script>
                 </div>
 
                 <button id="close-ad-btn">광고 닫고 활성화</button>
@@ -52,6 +50,7 @@
                 <button class="lang-btn" data-lang="cn">🇨🇳</button>
                 <button class="lang-btn" data-lang="jp">🇯🇵</button>
             </div>
+            
             <button id="install-btn" style="display:none;">📲 App Install</button>
             <button id="switch-camera-btn" aria-label="Switch Camera">🔄</button>
         </div>
@@ -88,7 +87,8 @@
                         <button class="color-btn locked" data-color="coral" style="background:#FF7F50;"></button>
                     </div>
                 </div>
-                 <div class="control-section">
+
+                <div class="control-section">
                     <span class="section-title" id="label-acc">🔴 액세서리</span>
                     <div class="button-group acc-buttons">
                         <button class="acc-btn active" data-acc="none">None</button>
@@ -102,6 +102,7 @@
     </div>
 
     <script type="module" src="app.js"></script>
+
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
