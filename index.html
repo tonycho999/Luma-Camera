@@ -42,22 +42,29 @@
         <canvas id="output_canvas"></canvas>
 
         <div id="top-bar">
+            <div id="lang-group">
+                <button class="lang-btn" data-lang="ko">🇰🇷</button>
+                <button class="lang-btn" data-lang="en">🇺🇸</button>
+                <button class="lang-btn" data-lang="cn">🇨🇳</button>
+                <button class="lang-btn" data-lang="jp">🇯🇵</button>
+            </div>
+            
             <button id="switch-camera-btn">🔄</button>
         </div>
 
         <div id="ui-layer">
             <div id="controls-container">
                 <div class="control-group">
-                    <span>턱선</span> 
+                    <span id="label-slim">턱선</span> 
                     <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
                 </div>
                 <div class="control-group">
-                    <span>조명</span> 
+                    <span id="label-beauty">뽀샤시</span> 
                     <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
                 </div>
                 
                 <div class="control-group toggle-group">
-                    <span>잡티 제거</span>
+                    <span id="label-flawless">잡티 제거</span>
                     <label class="switch">
                         <input type="checkbox" id="flawless-toggle">
                         <span class="slider round"></span>
