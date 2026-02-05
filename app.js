@@ -1,83 +1,48 @@
 import { FaceLandmarker, FilesetResolver } from "./assets/libs/vision_bundle.js";
+// [NEW] 분리된 언어 파일 불러오기
+import { TRANSLATIONS } from "./lang.js";
 
 // ==========================================
-// [설정] 앱 설치 버튼 로직 추가
+// [설정] 뷰티 + 필터 + 메이크업 + AR
 // ==========================================
 const SETTINGS = {
     slimStrength: 0.3, 
     updateInterval: 100, 
     maxFaces: 20,
     lightIntensity: 0.4, 
-    flawlessBlur: 1.5,      
-    flawlessContrast: 85    
 };
 
-// [번역 데이터 - 설치 버튼 추가]
-const TRANSLATIONS = {
-    ko: {
-        slim: "턱선",
-        beauty: "뽀샤시(조명)",
-        flawless: "소프트 스킨",
-        ad_multi_title: "👨‍👩‍👧‍👦 단체 사진 잠금 해제",
-        ad_multi_desc: "2명 이상 감지되었습니다. 광고를 보고 활성화하세요.",
-        ad_flawless_title: "✨ 소프트 스킨 잠금 해제",
-        ad_flawless_desc: "부드러운 피부결 필터를 사용하려면 광고를 시청하세요.",
-        ad_close: "광고 닫고 활성화",
-        install: "앱 설치 📲" // [NEW]
-    },
-    en: {
-        slim: "Slim",
-        beauty: "Lighting",
-        flawless: "Soft Skin",
-        ad_multi_title: "👨‍👩‍👧‍👦 Unlock Group Photo",
-        ad_multi_desc: "2+ people detected. Watch ad to unlock.",
-        ad_flawless_title: "✨ Unlock Soft Skin",
-        ad_flawless_desc: "Watch ad to enable soft skin texture filter.",
-        ad_close: "Close & Enable",
-        install: "Install App 📲"
-    },
-    cn: {
-        slim: "瘦脸",
-        beauty: "补光",
-        flawless: "柔肤",
-        ad_multi_title: "👨‍👩‍👧‍👦 解锁多人模式",
-        ad_multi_desc: "检测到多人。观看广告以解锁。",
-        ad_flawless_title: "✨ 解锁柔肤滤镜",
-        ad_flawless_desc: "观看广告以启用柔肤模式。",
-        ad_close: "关闭并启用",
-        install: "下载应用 📲"
-    },
-    jp: {
-        slim: "輪郭",
-        beauty: "照明",
-        flawless: "ソフト肌",
-        ad_multi_title: "👨‍👩‍👧‍👦 グループ写真の解除",
-        ad_multi_desc: "2人以上を検出しました。広告を見て解除します。",
-        ad_flawless_title: "✨ ソフト肌の解除",
-        ad_flawless_desc: "広告を見てソフト肌フィルターを有効にします。",
-        ad_close: "閉じて有効化",
-        install: "アプリ入手 📲"
-    }
-};
+// [현재 상태 & 잠금 여부]
+let currentFilter = 'none';
+let currentLipColor = 'none';
+let currentAcc = 'none';
+
+let isMultiUnlocked = false;    
+let isFilterUnlocked = false;
+let isLipUnlocked = false;
+let isAccUnlocked = false;
 
 let currentLang = 'en';
 
+// DOM Elements
 const video = document.getElementById("webcam");
 const canvasElement = document.getElementById("output_canvas");
 const slimRange = document.getElementById("slim-range");
 const beautyRange = document.getElementById("beauty-range");
 const captureBtn = document.getElementById("capture-btn");
 const switchBtn = document.getElementById("switch-camera-btn");
-const flawlessToggle = document.getElementById("flawless-toggle");
-
-// [설치 버튼]
 const installBtn = document.getElementById("install-btn");
-let deferredPrompt; // 설치 이벤트 저장용
 
 const labelSlim = document.getElementById("label-slim");
 const labelBeauty = document.getElementById("label-beauty");
-const labelFlawless = document.getElementById("label-flawless");
+const labelFilter = document.getElementById("label-filter");
+const labelLip = document.getElementById("label-lip");
+const labelAcc = document.getElementById("label-acc");
+
 const langBtns = document.querySelectorAll(".lang-btn");
+const filterBtns = document.querySelectorAll(".filter-btn");
+const colorBtns = document.querySelectorAll(".color-btn");
+const accBtns = document.querySelectorAll(".acc-btn");
 
 const adModal = document.getElementById("ad-modal");
 const adTitle = document.getElementById("ad-title");
@@ -88,76 +53,37 @@ let faceLandmarker;
 let isFrontCamera = true;
 let currentStream = null;
 let lastUpdateTime = 0;
-
-let isMultiUnlocked = false;    
-let isFlawlessUnlocked = false; 
 let isAdShowing = false;
 let adTriggerSource = "";       
 
+// Three.js variables
 let renderer, scene, camera;
 let videoTexture, meshPlane;
 let originalPositions;
 let beautySprites = []; 
 
+// 추가된 Three.js 객체들
+let lipMesh; // 립스틱 메쉬
+let noseMesh; // 루돌프 코 메쉬
+
 let videoAspect = 1.0; 
 let screenAspect = 1.0;
 
 // ==========================================
-// [NEW] 앱 설치 로직 (PWA)
-// ==========================================
-
-// 1. 브라우저가 "설치 가능한 상태"라고 신호를 보낼 때
-window.addEventListener('beforeinstallprompt', (e) => {
-    // 기본 배너 뜨는거 막고, 우리가 만든 버튼 보여주기 위해 저장
-    e.preventDefault();
-    deferredPrompt = e;
-    
-    // 이미 앱으로 실행 중이 아니면 버튼 표시
-    if (!window.matchMedia('(display-mode: standalone)').matches) {
-        installBtn.style.display = 'block';
-    }
-});
-
-// 2. 설치 버튼 클릭 시
-if(installBtn) {
-    installBtn.addEventListener('click', async () => {
-        if (!deferredPrompt) return;
-        
-        // 설치 팝업 띄우기
-        deferredPrompt.prompt();
-        
-        // 유저가 설치했는지 취소했는지 확인
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User response: ${outcome}`);
-        
-        // 한번 썼으니 초기화
-        deferredPrompt = null;
-        
-        // 설치했거나 닫으면 버튼 숨김
-        installBtn.style.display = 'none';
-    });
-}
-
-// 3. 이미 앱이 설치되어 실행 중이면 버튼 숨김 (한번 더 체크)
-if (window.matchMedia('(display-mode: standalone)').matches) {
-    if(installBtn) installBtn.style.display = 'none';
-}
-
-
-// ==========================================
-// 0. 언어 설정 & 자동 감지
+// 0. 언어 & UI 초기화
 // ==========================================
 function setLanguage(lang) {
-    if (!TRANSLATIONS[lang]) return;
+    if (!TRANSLATIONS[lang]) lang = 'en'; // fallback
     currentLang = lang;
-
     const t = TRANSLATIONS[lang];
     
     labelSlim.innerText = t.slim;
     labelBeauty.innerText = t.beauty;
-    labelFlawless.innerText = t.flawless;
+    labelFilter.innerText = t.filter;
+    labelLip.innerText = t.lip;
+    labelAcc.innerText = t.acc;
     closeAdBtn.innerText = t.ad_close;
-    if(installBtn) installBtn.innerText = t.install; // 설치 버튼 번역
+    if(installBtn) installBtn.innerText = t.install;
 
     langBtns.forEach(btn => {
         if(btn.dataset.lang === lang) btn.classList.add("active");
@@ -168,288 +94,331 @@ function setLanguage(lang) {
 function detectAndSetLanguage() {
     const userLang = navigator.language || navigator.userLanguage; 
     if (userLang.startsWith('ko')) setLanguage('ko');
-    else if (userLang.startsWith('zh')) setLanguage('cn');
-    else if (userLang.startsWith('ja')) setLanguage('jp');
-    else setLanguage('en');
+    else setLanguage('en'); 
 }
 
-langBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        setLanguage(btn.dataset.lang);
-    });
-});
-
-
 // ==========================================
-// 1. Three.js 초기화
+// 1. Three.js 초기화 (립스틱, 코 추가)
 // ==========================================
 function initThreeJS() {
     const width = window.innerWidth;
     const height = window.innerHeight;
 
-    renderer = new THREE.WebGLRenderer({ 
-        canvas: canvasElement, 
-        antialias: false, 
-        preserveDrawingBuffer: true 
-    });
+    renderer = new THREE.WebGLRenderer({ canvas: canvasElement, antialias: false, preserveDrawingBuffer: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     scene = new THREE.Scene();
 
     const aspect = width / height;
-    const frustumHeight = 2.0;
-    const frustumWidth = frustumHeight * aspect;
-
-    camera = new THREE.OrthographicCamera(
-        frustumWidth / -2, frustumWidth / 2,
-        frustumHeight / 2, frustumHeight / -2,
-        0.1, 100
-    );
+    camera = new THREE.OrthographicCamera(-aspect, aspect, 1, -1, 0.1, 100);
     camera.position.z = 10;
 
     videoTexture = new THREE.VideoTexture(video);
     videoTexture.minFilter = THREE.LinearFilter;
-    videoTexture.magFilter = THREE.LinearFilter;
-    videoTexture.format = THREE.RGBFormat;
-    videoTexture.generateMipmaps = false;
     
-    const geometry = new THREE.PlaneGeometry(frustumWidth, frustumHeight, 64, 64);
-    const count = geometry.attributes.position.count;
-    originalPositions = new Float32Array(count * 3);
-    for (let i = 0; i < count * 3; i++) {
-        originalPositions[i] = geometry.attributes.position.array[i];
-    }
+    const geometry = new THREE.PlaneGeometry(aspect * 2, 2, 64, 64);
+    originalPositions = new Float32Array(geometry.attributes.position.count * 3);
+    originalPositions.set(geometry.attributes.position.array);
 
-    const material = new THREE.MeshBasicMaterial({ 
-        map: videoTexture,
-        side: THREE.DoubleSide
-    });
-
-    meshPlane = new THREE.Mesh(geometry, material);
+    meshPlane = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: videoTexture, side: THREE.DoubleSide }));
     scene.add(meshPlane);
 
     createBeautyLightsPool();
+    
+    // [NEW] 립스틱 메쉬 생성
+    createLipMesh();
+    // [NEW] 루돌프 코 메쉬 생성
+    createNoseMesh();
+
     updateCSSFilters(); 
     detectAndSetLanguage();
-
     window.addEventListener('resize', onWindowResize);
 }
 
+// 립스틱용 메쉬 만들기
+function createLipMesh() {
+    const lipIndices = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61]; 
+    const geometry = new THREE.BufferGeometry();
+    const vertices = new Float32Array(lipIndices.length * 3);
+    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.0 });
+    lipMesh = new THREE.Mesh(geometry, material);
+    lipMesh.renderOrder = 998; 
+    scene.add(lipMesh);
+}
+
+// 루돌프 코 메쉬 만들기
+function createNoseMesh() {
+    const geometry = new THREE.SphereGeometry(0.05, 16, 16); 
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    noseMesh = new THREE.Mesh(geometry, material);
+    noseMesh.scale.set(0,0,0); 
+    noseMesh.renderOrder = 1000;
+    scene.add(noseMesh);
+}
+
+
 function createBeautyLightsPool() {
     const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const context = canvas.getContext('2d');
-    
-    const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.5)'); 
-    gradient.addColorStop(0.6, 'rgba(255, 240, 240, 0.2)'); 
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, 128, 128);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    const materialBase = new THREE.SpriteMaterial({ 
-        map: texture, 
-        transparent: true,
-        opacity: 0, 
-        blending: THREE.AdditiveBlending, 
-        depthTest: false
-    });
-
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const grd = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, 'rgba(255, 255, 255, 0.5)'); 
+    grd.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthTest: false });
     for(let i=0; i<SETTINGS.maxFaces; i++) {
-        const sprite = new THREE.Sprite(materialBase.clone()); 
-        sprite.scale.set(0, 0, 1);
-        sprite.renderOrder = 999; 
-        scene.add(sprite);
-        beautySprites.push(sprite);
+        const sprite = new THREE.Sprite(mat.clone()); sprite.scale.set(0,0,1);
+        scene.add(sprite); beautySprites.push(sprite);
     }
 }
 
 function onWindowResize() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const aspect = width / height;
-    
+    const width = window.innerWidth; const height = window.innerHeight;
     renderer.setSize(width, height);
-    
-    const frustumHeight = 2.0;
-    const frustumWidth = frustumHeight * aspect;
-    camera.left = frustumWidth / -2;
-    camera.right = frustumWidth / 2;
-    camera.top = frustumHeight / 2;
-    camera.bottom = frustumHeight / -2;
+    const aspect = width / height;
+    camera.left = -aspect; camera.right = aspect;
     camera.updateProjectionMatrix();
-
     adjustVideoLayout();
 }
 
 function adjustVideoLayout() {
     if (!video || video.videoWidth === 0) return;
-
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    const sw = window.innerWidth;
-    const sh = window.innerHeight;
-
-    videoAspect = vw / vh;
-    screenAspect = sw / sh;
-    
-    let scaleX = 1;
-    let scaleY = 1;
-
-    if (screenAspect < videoAspect) {
-        scaleX = (videoAspect / screenAspect);
-    } else {
-        scaleY = (screenAspect / videoAspect);
-    }
-
-    const mirrorFactor = isFrontCamera ? -1 : 1;
-    meshPlane.scale.set(scaleX * mirrorFactor, scaleY, 1);
+    videoAspect = video.videoWidth / video.videoHeight;
+    screenAspect = window.innerWidth / window.innerHeight;
+    let sx = 1, sy = 1;
+    if (screenAspect < videoAspect) sx = videoAspect / screenAspect;
+    else sy = screenAspect / videoAspect;
+    meshPlane.scale.set(sx * (isFrontCamera ? -1 : 1), sy, 1);
 }
 
 // ==========================================
-// 2. AI 모델
+// 2. AI & Webcam
 // ==========================================
 async function createFaceLandmarker() {
     const filesetResolver = await FilesetResolver.forVisionTasks("./assets/libs/wasm");
     faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
         baseOptions: { modelAssetPath: "./assets/models/face_landmarker.task", delegate: "GPU" },
-        outputFaceBlendshapes: false,
-        runningMode: "VIDEO",
-        numFaces: SETTINGS.maxFaces 
+        outputFaceBlendshapes: false, runningMode: "VIDEO", numFaces: SETTINGS.maxFaces 
     });
     startWebcam();
 }
 
-// ==========================================
-// 3. 웹캠
-// ==========================================
 function startWebcam() {
-    if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-    }
-    const constraints = {
-        video: {
-            facingMode: isFrontCamera ? "user" : "environment",
-            width: { ideal: 1920 }, height: { ideal: 1080 }
-        }
-    };
-    navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
-        currentStream = stream;
-        video.srcObject = stream;
-        video.onloadedmetadata = () => {
-            video.play();
-            adjustVideoLayout();
-            renderLoop();
-        };
-    }).catch(err => console.error("카메라 에러:", err));
+    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } } }).then((stream) => {
+        currentStream = stream; video.srcObject = stream;
+        video.onloadedmetadata = () => { video.play(); adjustVideoLayout(); renderLoop(); };
+    });
 }
 
 // ==========================================
-// 4. 렌더링 루프
+// 3. 렌더링 루프 (핵심 업데이트)
 // ==========================================
 function renderLoop(timestamp) {
     requestAnimationFrame(renderLoop);
-
     if (isAdShowing) return;
     if (timestamp - lastUpdateTime < SETTINGS.updateInterval) return;
     lastUpdateTime = timestamp;
 
     let results;
-    if (video.readyState >= 2 && faceLandmarker) {
-        let startTimeMs = performance.now();
-        results = faceLandmarker.detectForVideo(video, startTimeMs);
-    }
+    if (video.readyState >= 2 && faceLandmarker) results = faceLandmarker.detectForVideo(video, performance.now());
 
-    const positions = meshPlane.geometry.attributes.position.array;
-    for (let i = 0; i < positions.length; i++) {
-        positions[i] = originalPositions[i];
-    }
-
-    beautySprites.forEach(sprite => {
-        sprite.scale.set(0,0,1);
-        sprite.material.opacity = 0;
-    });
+    meshPlane.geometry.attributes.position.array.set(originalPositions);
+    beautySprites.forEach(s => s.scale.set(0,0,1));
+    // 립스틱, 코 초기화
+    if(lipMesh) lipMesh.material.opacity = 0;
+    if(noseMesh) noseMesh.scale.set(0,0,0);
 
     if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
-        
-        if (results.faceLandmarks.length >= 2 && !isMultiUnlocked) {
-            showAdModal('multi');
-            return; 
-        }
+        if (results.faceLandmarks.length >= 2 && !isMultiUnlocked) { showAdModal('multi'); return; }
 
         results.faceLandmarks.forEach((landmarks, index) => {
-            applyFaceWarping(landmarks, positions);
+            applyFaceWarping(landmarks, meshPlane.geometry.attributes.position.array);
             
             if (index < beautySprites.length) {
-                const sprite = beautySprites[index];
-                updateBeautyPosition(landmarks, sprite);
-                sprite.material.opacity = SETTINGS.lightIntensity; 
+                updateBeautyPosition(landmarks, beautySprites[index]);
+                beautySprites[index].material.opacity = SETTINGS.lightIntensity;
+            }
+            
+            // 첫 번째 얼굴에만 립스틱/액세서리 적용
+            if (index === 0) {
+                updateLipMesh(landmarks);
+                updateNoseMesh(landmarks);
             }
         });
     }
-    
     meshPlane.geometry.attributes.position.needsUpdate = true;
+    // 거울모드에 따라 액세서리도 반전 필요
+    if(noseMesh) noseMesh.scale.x = isFrontCamera ? -Math.abs(noseMesh.scale.x) : Math.abs(noseMesh.scale.x);
+
     renderer.render(scene, camera);
 }
 
-// ==========================================
-// 5. 잡티 제거 (조건부 필터)
-// ==========================================
-function updateCSSFilters() {
-    let blurVal = 0;
-    let contrastVal = 100;
-    let saturateVal = 100;
-
-    if (flawlessToggle.checked) {
-        blurVal = SETTINGS.flawlessBlur;        
-        contrastVal = SETTINGS.flawlessContrast; 
-        saturateVal = 105;                      
-    }
-
-    canvasElement.style.filter = `
-        blur(${blurVal}px) 
-        contrast(${contrastVal}%) 
-        saturate(${saturateVal}%)
-    `;
-}
-
-// ==========================================
-// 6. 워핑 & 조명 & UI
-// ==========================================
-function applyFaceWarping(landmarks, positions) {
-    if (SETTINGS.slimStrength <= 0.01) return;
-
+// 립스틱 위치 업데이트
+function updateLipMesh(landmarks) {
+    if (currentLipColor === 'none' || !lipMesh) return;
+    
+    const positions = lipMesh.geometry.attributes.position.array;
+    const lipIndices = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
+    
     const width = camera.right - camera.left;
     const height = camera.top - camera.bottom;
+
+    for (let i = 0; i < lipIndices.length; i++) {
+        const lm = landmarks[lipIndices[i]];
+        // 월드 좌표로 변환 (거울모드 고려)
+        positions[i * 3] = (lm.x - 0.5) * width * (isFrontCamera ? -1 : 1);
+        positions[i * 3 + 1] = -(lm.y - 0.5) * height;
+        positions[i * 3 + 2] = -lm.z * width * 0.5 + 0.01; 
+    }
+    lipMesh.geometry.attributes.position.needsUpdate = true;
+    lipMesh.material.opacity = 0.5; // 반투명
+}
+
+// 루돌프 코 위치 업데이트
+function updateNoseMesh(landmarks) {
+    if (currentAcc !== 'nose' || !noseMesh) return;
+
+    const noseTip = landmarks[1]; // 코 끝
+    const width = camera.right - camera.left;
+    const height = camera.top - camera.bottom;
+
+    noseMesh.position.set(
+        (noseTip.x - 0.5) * width * (isFrontCamera ? -1 : 1),
+        -(noseTip.y - 0.5) * height,
+        -noseTip.z * width * 0.5 + 0.05 // 코보다 더 앞
+    );
     
-    function toWorld(lm) {
-        return {
-            x: (lm.x - 0.5) * width,
-            y: -(lm.y - 0.5) * height 
-        };
+    // 얼굴 크기에 맞춰 코 크기 조절
+    const faceW = Math.abs(landmarks[454].x - landmarks[234].x) * width;
+    const s = faceW * 0.25;
+    noseMesh.scale.set(s, s, s);
+}
+
+
+// ==========================================
+// 4. 기능 구현 (필터, 립스틱, 액세서리)
+// ==========================================
+
+// 필터 CSS 적용
+function updateCSSFilters() {
+    let filterString = '';
+    if (currentFilter === 'vintage') filterString = 'sepia(0.5) contrast(0.9) brightness(1.1)';
+    else if (currentFilter === 'mono') filterString = 'grayscale(1) contrast(1.1)';
+    canvasElement.style.filter = filterString;
+}
+
+// 립스틱 색상 변경
+function updateLipColor() {
+    if(!lipMesh) return;
+    let color = 0xffffff;
+    if(currentLipColor === 'pink') color = 0xFF69B4;
+    else if(currentLipColor === 'red') color = 0xFF0000;
+    else if(currentLipColor === 'coral') color = 0xFF7F50;
+    lipMesh.material.color.setHex(color);
+}
+
+
+// ==========================================
+// 5. UI 이벤트 및 광고 로직
+// ==========================================
+
+function updateUIActiveState() {
+    filterBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.filter === currentFilter));
+    colorBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.color === currentLipColor));
+    accBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.acc === currentAcc));
+    
+    // 잠금 아이콘 제거
+    if(isFilterUnlocked) filterBtns.forEach(btn => btn.classList.remove('locked'));
+    if(isLipUnlocked) colorBtns.forEach(btn => btn.classList.remove('locked'));
+    if(isAccUnlocked) accBtns.forEach(btn => btn.classList.remove('locked'));
+}
+
+// 이벤트 리스너 연결
+filterBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('filter', btn.dataset.filter)));
+colorBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('lip', btn.dataset.color)));
+accBtns.forEach(btn => btn.addEventListener('click', () => handleFeatureClick('acc', btn.dataset.acc)));
+
+function handleFeatureClick(type, value) {
+    if (value === 'none') { // '없음'은 항상 무료
+        if(type === 'filter') currentFilter = value;
+        if(type === 'lip') currentLipColor = value;
+        if(type === 'acc') currentAcc = value;
+        applyFeatures();
+        return;
     }
 
+    // 잠겨있으면 광고 표시
+    if (type === 'filter' && !isFilterUnlocked) { showAdModal('filter'); return; }
+    if (type === 'lip' && !isLipUnlocked) { showAdModal('lip'); return; }
+    if (type === 'acc' && !isAccUnlocked) { showAdModal('acc'); return; }
+
+    // 해제되었으면 적용
+    if(type === 'filter') currentFilter = value;
+    if(type === 'lip') currentLipColor = value;
+    if(type === 'acc') currentAcc = value;
+    applyFeatures();
+}
+
+function applyFeatures() {
+    updateCSSFilters();
+    updateLipColor();
+    updateUIActiveState();
+}
+
+// [광고 팝업]
+function showAdModal(source) {
+    adTriggerSource = source; 
+    const t = TRANSLATIONS[currentLang];
+    if (source === 'multi') { adTitle.innerText = t.ad_multi_title; adDesc.innerText = t.ad_multi_desc; }
+    else if (source === 'filter') { adTitle.innerText = t.ad_filter_title; adDesc.innerText = t.ad_filter_desc; }
+    else if (source === 'lip') { adTitle.innerText = t.ad_lip_title; adDesc.innerText = t.ad_lip_desc; }
+    else if (source === 'acc') { adTitle.innerText = t.ad_acc_title; adDesc.innerText = t.ad_acc_desc; }
+    isAdShowing = true;
+    adModal.style.display = "flex";
+}
+
+closeAdBtn.addEventListener('click', () => {
+    isAdShowing = false;
+    adModal.style.display = "none";
+    if (adTriggerSource === 'multi') isMultiUnlocked = true;
+    else if (adTriggerSource === 'filter') { isFilterUnlocked = true; }
+    else if (adTriggerSource === 'lip') { isLipUnlocked = true; }
+    else if (adTriggerSource === 'acc') { isAccUnlocked = true; }
+    updateUIActiveState(); // 잠금 아이콘 제거
+});
+
+// 기타 이벤트
+langBtns.forEach(btn => btn.addEventListener('click', () => setLanguage(btn.dataset.lang)));
+slimRange.addEventListener('input', (e) => SETTINGS.slimStrength = (1.0 - parseFloat(e.target.value)) / 0.15);
+beautyRange.addEventListener('input', (e) => SETTINGS.lightIntensity = (parseInt(e.target.value) - 100) / 50 * 0.8);
+switchBtn.addEventListener('click', () => { isFrontCamera = !isFrontCamera; startWebcam(); });
+captureBtn.addEventListener('click', () => { renderer.render(scene, camera); const link = document.createElement('a'); link.download = `luma_capture.png`; link.href = renderer.domElement.toDataURL("image/png"); link.click(); });
+let deferredPrompt; window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (!window.matchMedia('(display-mode: standalone)').matches) installBtn.style.display = 'block'; });
+installBtn.addEventListener('click', async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); deferredPrompt = null; installBtn.style.display = 'none'; });
+
+// 워핑 함수
+function applyFaceWarping(landmarks, positions) {
+    if (SETTINGS.slimStrength <= 0.01) return;
+    const width = camera.right - camera.left;
+    const height = camera.top - camera.bottom;
+    function toWorld(lm) { return { x: (lm.x - 0.5) * width, y: -(lm.y - 0.5) * height }; }
     const chin = toWorld(landmarks[152]);
     const nose = toWorld(landmarks[1]);
     const faceWidth = Math.abs(toWorld(landmarks[234]).x - toWorld(landmarks[454]).x);
-
-    const radius = faceWidth * 1.3; 
-    const force = SETTINGS.slimStrength * 0.2; 
-
+    const radius = faceWidth * 1.3;
+    const force = SETTINGS.slimStrength * 0.2;
     for (let i = 0; i < positions.length; i += 3) {
         const vx = positions[i];
         const vy = positions[i+1];
-        
         if (Math.abs(vx - chin.x) > radius || Math.abs(vy - chin.y) > radius) continue;
-
         const dx = vx - chin.x;
         const dy = vy - chin.y;
         const distSq = dx*dx + dy*dy;
-        
         if (distSq < radius * radius) {
             const factor = Math.exp(-distSq / (2 * (radius * 0.4) * (radius * 0.4)));
             positions[i] += (nose.x - vx) * factor * force;
@@ -458,91 +427,21 @@ function applyFaceWarping(landmarks, positions) {
     }
 }
 
+// 조명 위치 함수
 function updateBeautyPosition(landmarks, sprite) {
     if (!sprite) return;
     const width = camera.right - camera.left;
     const height = camera.top - camera.bottom;
-
     let noseX = (landmarks[1].x - 0.5) * width;
     const noseY = -(landmarks[1].y - 0.5) * height;
-
-    if (isFrontCamera) noseX = -noseX; 
-
+    if (isFrontCamera) noseX = -noseX;
     const leftEar = (landmarks[234].x - 0.5) * width;
     const rightEar = (landmarks[454].x - 0.5) * width;
     const faceW = Math.abs(rightEar - leftEar);
-
-    sprite.position.set(noseX, noseY, 0.1); 
-    const size = faceW * 4.0; 
+    sprite.position.set(noseX, noseY, 0.1);
+    const size = faceW * 4.0;
     sprite.scale.set(size, size, 1);
 }
-
-// [광고 팝업]
-function showAdModal(source) {
-    adTriggerSource = source; 
-    const t = TRANSLATIONS[currentLang];
-
-    if (source === 'multi') {
-        adTitle.innerText = t.ad_multi_title;
-        adDesc.innerText = t.ad_multi_desc;
-    } else if (source === 'flawless') {
-        adTitle.innerText = t.ad_flawless_title;
-        adDesc.innerText = t.ad_flawless_desc;
-    }
-    
-    isAdShowing = true;
-    adModal.style.display = "flex";
-}
-
-if(closeAdBtn) {
-    closeAdBtn.addEventListener('click', () => {
-        isAdShowing = false;
-        adModal.style.display = "none";
-        
-        if (adTriggerSource === 'multi') {
-            isMultiUnlocked = true;
-        } else if (adTriggerSource === 'flawless') {
-            isFlawlessUnlocked = true;
-            flawlessToggle.checked = true; 
-            updateCSSFilters();
-        }
-    });
-}
-
-flawlessToggle.addEventListener('click', (e) => {
-    if (isFlawlessUnlocked) {
-        updateCSSFilters();
-        return;
-    }
-    e.preventDefault(); 
-    showAdModal('flawless');
-});
-
-
-slimRange.addEventListener('input', (e) => {
-    const val = parseFloat(e.target.value);
-    SETTINGS.slimStrength = (1.0 - val) / 0.15;
-    if(SETTINGS.slimStrength < 0) SETTINGS.slimStrength = 0;
-});
-
-beautyRange.addEventListener('input', (e) => {
-    const val = parseInt(e.target.value); 
-    SETTINGS.lightIntensity = (val - 100) / 50 * 0.8;
-});
-
-switchBtn.addEventListener('click', () => {
-    isFrontCamera = !isFrontCamera;
-    startWebcam();
-});
-
-captureBtn.addEventListener('click', () => {
-    renderer.render(scene, camera);
-    const dataURL = renderer.domElement.toDataURL("image/png");
-    const link = document.createElement('a');
-    link.download = `luma_capture.png`;
-    link.href = dataURL;
-    link.click();
-});
 
 initThreeJS();
 createFaceLandmarker();
