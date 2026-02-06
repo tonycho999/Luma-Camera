@@ -14,65 +14,67 @@
 </head>
 <body>
     <div id="app-container">
+        
         <div id="ad-modal" style="display:none;">
             <div class="ad-content">
                 <h3 id="ad-title">🎁 프리미엄 모드</h3>
-                <p id="ad-desc">광고를 보고 10분간 자유롭게 이용하세요!<br>(오늘 남은 광고: <span id="ad-count-display">0</span>/10)</p>
+                <p>
+                    <span id="ad-desc">광고를 보고 10분간 이용하세요!</span><br>
+                    <span id="ad-limit-text" style="font-size:0.9em; color:#888;">(오늘 남은 광고: 0/10)</span>
+                </p>
                 <div class="ad-box">
                     <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-7272957295128241" data-ad-slot="1234567890" data-ad-format="auto" data-full-width-responsive="true"></ins>
                 </div>
-                <button id="close-ad-btn">광고 닫고 10분 무료 시작</button>
+                <button id="close-ad-btn">광고 닫고 시작</button>
             </div>
         </div>
 
         <video id="webcam" autoplay playsinline muted style="display:none"></video>
         <canvas id="output_canvas"></canvas>
-        
         <div id="flash-effect"></div>
 
         <div id="top-bar">
-            <button id="install-btn" style="display:none;">📲 Install</button>
-            <div style="flex:1;"></div>
-            <button id="switch-camera-btn">🔄</button>
+            <div style="flex:1;"></div> <button id="install-btn" style="display:none;">📲 Install</button>
+            <button id="switch-camera-btn" style="margin-left:10px;">🔄</button>
         </div>
 
         <div id="ui-layer">
             
             <div id="extra-controls">
                 <div class="control-section">
-                    <span class="section-title">✨ 뷰티 & 필터</span>
+                    <span class="section-title" id="title-beauty">✨ 뷰티 & 필터</span>
                     <div class="control-group">
-                        <span>턱선</span> <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
+                        <span id="label-slim">턱선</span> 
+                        <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
                     </div>
                     <div class="control-group">
-                        <span>조명</span> <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
+                        <span id="label-beauty">뽀샤시</span> 
+                        <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
                     </div>
                     <div class="button-group filter-buttons">
-                        <button class="filter-btn active" data-filter="none">Normal</button>
-                        <button class="filter-btn" data-filter="vintage">Vintage</button>
-                        <button class="filter-btn" data-filter="mono">Mono</button>
+                        <button class="filter-btn active" data-filter="none" id="btn-f-norm">Normal</button>
+                        <button class="filter-btn" data-filter="vintage" id="btn-f-vin">Vintage</button>
+                        <button class="filter-btn" data-filter="mono" id="btn-f-mono">Mono</button>
                     </div>
                 </div>
 
                 <div class="control-section">
-                    <span class="section-title">💄 메이크업 & 소품</span>
+                    <span class="section-title" id="title-makeup">💄 메이크업 & 소품</span>
                     <div class="color-picker-group">
                         <button class="color-btn active" data-color="none" style="border:2px solid #fff">X</button>
                         <button class="color-btn" data-color="pink" style="background:#FF69B4"></button>
                         <button class="color-btn" data-color="red" style="background:#FF0000"></button>
                     </div>
                     <div class="button-group acc-buttons" style="margin-top:5px;">
-                        <button class="acc-btn active" data-acc="none">None</button>
-                        <button class="acc-btn" data-acc="nose">Rudolph</button>
+                        <button class="acc-btn active" data-acc="none" id="btn-a-none">None</button>
+                        <button class="acc-btn" data-acc="nose" id="btn-a-nose">Rudolph</button>
                     </div>
                 </div>
             </div>
 
             <div class="bottom-bar">
                 <button id="option-btn">⚙️ 설정</button>
-                
                 <button id="capture-btn"></button>
-                
                 <div style="width: 50px;"></div>
             </div>
         </div>
