@@ -3,131 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    
-    <title>Luma Camera - AI Beauty & AR Filter</title>
-    
-    <meta name="description" content="Free Online AI Camera. Chin slimming, V-line, Soft Skin filter, and Lighting. No installation required. (AI 카메라, 턱선 보정, 소프트 스킨, 뽀샤시, 무설치 웹캠 필터 / 在线AI美颜相机, 瘦脸, 柔肤 / AI美肌カメラ, 小顔補正, ソフト肌)">
-
-    <meta name="keywords" content="
-        AI Camera, Chin Slimming, Soft Skin, Beauty Filter, Webcam, No Install,
-        AI 카메라, 턱선 보정, 브이라인, 뽀샤시, 소프트 스킨, 피부 보정, 웹캠 필터, 온라인 성형,
-        AI相机, 瘦脸, 美颜, 柔肤, 磨皮, 在线相机,
-        AIカメラ, 小顔, 輪郭補正, 美肌, ソフト肌, Webカメラ
-    ">
-
-    <meta name="author" content="Luma Camera">
-    <meta name="robots" content="index, follow"> 
-
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="Luma Camera - AI Beauty Filter">
-    <meta property="og:description" content="Real-time AI Chin Slimming & Soft Skin Filter. Try it now on your browser!">
-    <meta property="og:image" content="./assets/icons/icon-512.png"> 
-
+    <title>Luma Camera</title>
+    <meta name="description" content="AI Beauty Camera">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
     <link rel="stylesheet" href="style.css">
     <link rel="apple-touch-icon" href="assets/icons/icon-180.png">
-
     <script src="./assets/libs/three.min.js"></script>
-
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7272957295128241"
-     crossorigin="anonymous"></script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7272957295128241" crossorigin="anonymous"></script>
 </head>
 <body>
-
     <div id="app-container">
-        
         <div id="ad-modal" style="display:none;">
             <div class="ad-content">
-                <h3 id="ad-title">🎁 기능 잠금 해제</h3>
-                <p id="ad-desc">광고를 보고 기능을 활성화하세요.</p>
-                
+                <h3 id="ad-title">🎁 프리미엄 모드</h3>
+                <p id="ad-desc">광고를 보고 10분간 자유롭게 이용하세요!<br>(오늘 남은 광고: <span id="ad-count-display">0</span>/10)</p>
                 <div class="ad-box">
-                    <ins class="adsbygoogle"
-                         style="display:block"
-                         data-ad-client="ca-pub-7272957295128241"
-                         data-ad-slot="1234567890" 
-                         data-ad-format="auto"
-                         data-full-width-responsive="true"></ins>
+                    <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-7272957295128241" data-ad-slot="1234567890" data-ad-format="auto" data-full-width-responsive="true"></ins>
                 </div>
-
-                <button id="close-ad-btn">광고 닫고 활성화</button>
+                <button id="close-ad-btn">광고 닫고 10분 무료 시작</button>
             </div>
         </div>
 
         <video id="webcam" autoplay playsinline muted style="display:none"></video>
         <canvas id="output_canvas"></canvas>
+        
+        <div id="flash-effect"></div>
 
         <div id="top-bar">
-            <div id="lang-group">
-                <button class="lang-btn" data-lang="ko">🇰🇷</button>
-                <button class="lang-btn" data-lang="en">🇺🇸</button>
-                <button class="lang-btn" data-lang="cn">🇨🇳</button>
-                <button class="lang-btn" data-lang="jp">🇯🇵</button>
-            </div>
-            
-            <button id="install-btn" style="display:none;">📲 App Install</button>
-            <button id="switch-camera-btn" aria-label="Switch Camera">🔄</button>
+            <button id="install-btn" style="display:none;">📲 Install</button>
+            <div style="flex:1;"></div>
+            <button id="switch-camera-btn">🔄</button>
         </div>
 
         <div id="ui-layer">
-            <div id="controls-container" class="expanded-controls">
-                
+            
+            <div id="extra-controls">
                 <div class="control-section">
+                    <span class="section-title">✨ 뷰티 & 필터</span>
                     <div class="control-group">
-                        <span id="label-slim">턱선</span> 
-                        <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
+                        <span>턱선</span> <input type="range" id="slim-range" min="0.85" max="1.0" step="0.01" value="0.96">
                     </div>
                     <div class="control-group">
-                        <span id="label-beauty">뽀샤시</span> 
-                        <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
+                        <span>조명</span> <input type="range" id="beauty-range" min="100" max="150" step="1" value="120">
+                    </div>
+                    <div class="button-group filter-buttons">
+                        <button class="filter-btn active" data-filter="none">Normal</button>
+                        <button class="filter-btn" data-filter="vintage">Vintage</button>
+                        <button class="filter-btn" data-filter="mono">Mono</button>
                     </div>
                 </div>
 
-                <button id="option-btn" class="glow-btn">✨ 꾸미기 옵션 (터치)</button>
-
-                <div id="extra-controls" style="display:none;">
-                    
-                    <div class="control-section">
-                        <span class="section-title" id="label-filter">🎨 필터</span>
-                        <div class="button-group filter-buttons">
-                            <button class="filter-btn active" data-filter="none">Normal</button>
-                            <button class="filter-btn" data-filter="vintage">Vintage</button>
-                            <button class="filter-btn" data-filter="mono">Mono</button>
-                        </div>
+                <div class="control-section">
+                    <span class="section-title">💄 메이크업 & 소품</span>
+                    <div class="color-picker-group">
+                        <button class="color-btn active" data-color="none" style="border:2px solid #fff">X</button>
+                        <button class="color-btn" data-color="pink" style="background:#FF69B4"></button>
+                        <button class="color-btn" data-color="red" style="background:#FF0000"></button>
                     </div>
-
-                    <div class="control-section">
-                        <span class="section-title" id="label-lip">💄 립스틱</span>
-                        <div class="color-picker-group">
-                            <button class="color-btn active" data-color="none" style="background:transparent; border: 2px solid #fff;">X</button>
-                            <button class="color-btn" data-color="pink" style="background:#FF69B4;"></button>
-                            <button class="color-btn" data-color="red" style="background:#FF0000;"></button>
-                            <button class="color-btn" data-color="coral" style="background:#FF7F50;"></button>
-                        </div>
+                    <div class="button-group acc-buttons" style="margin-top:5px;">
+                        <button class="acc-btn active" data-acc="none">None</button>
+                        <button class="acc-btn" data-acc="nose">Rudolph</button>
                     </div>
+                </div>
+            </div>
 
-                    <div class="control-section">
-                        <span class="section-title" id="label-acc">🔴 액세서리</span>
-                        <div class="button-group acc-buttons">
-                            <button class="acc-btn active" data-acc="none">None</button>
-                            <button class="acc-btn" data-acc="nose">Rudolph</button>
-                        </div>
-                    </div>
-
-                </div> </div>
-            <button id="capture-btn" aria-label="Take Photo"></button>
+            <div class="bottom-bar">
+                <button id="option-btn">⚙️ 설정</button>
+                
+                <button id="capture-btn"></button>
+                
+                <div style="width: 50px;"></div>
+            </div>
         </div>
     </div>
-
     <script type="module" src="app.js"></script>
-
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js');
-            });
-        }
-    </script>
 </body>
 </html>
