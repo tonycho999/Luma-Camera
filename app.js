@@ -49,7 +49,8 @@ const adDesc = document.getElementById("ad-desc");
 const adLimitText = document.getElementById("ad-limit-text");
 const closeAdBtn = document.getElementById("close-ad-btn");
 
-let faceLandmarker, renderer, scene, camera, meshPlane, originalPositions;
+// [수정됨] videoTexture 변수 추가
+let faceLandmarker, renderer, scene, camera, meshPlane, originalPositions, videoTexture;
 let beautySprites = [];
 let isFrontCamera = true;
 let currentStream = null;
@@ -62,11 +63,10 @@ let pendingAction = null;
 // 0. 언어 자동 감지 및 설정
 // ==========================================
 function setLanguage(lang) {
-    if (!TRANSLATIONS[lang]) lang = 'en'; // 지원 안 하는 언어면 영어로
+    if (!TRANSLATIONS[lang]) lang = 'en'; 
     currentLang = lang;
     const t = TRANSLATIONS[lang];
     
-    // 텍스트 적용
     labelSlim.innerText = t.slim;
     labelBeauty.innerText = t.beauty;
     titleBeauty.innerText = t.section_beauty;
@@ -74,31 +74,26 @@ function setLanguage(lang) {
     optionBtn.innerText = t.option_btn;
     installBtn.innerText = t.install;
     
-    // 버튼 텍스트
     if(btnFNorm) btnFNorm.innerText = t.filter_norm;
     if(btnFVin) btnFVin.innerText = t.filter_vin;
     if(btnFMono) btnFMono.innerText = t.filter_mono;
     if(btnANone) btnANone.innerText = t.acc_none;
     if(btnANose) btnANose.innerText = t.acc_nose;
 
-    // 광고 팝업 텍스트
     adTitle.innerText = t.ad_title;
     adDesc.innerText = t.ad_desc;
     closeAdBtn.innerText = t.ad_close;
-    updateAdCountDisplay(); // 남은 횟수 텍스트 갱신
+    updateAdCountDisplay();
 }
 
 function detectAndSetLanguage() {
     const userLang = navigator.language || navigator.userLanguage; 
-    console.log("Detected Language:", userLang); // 디버깅용
-
     if (userLang.startsWith('ko')) setLanguage('ko');
     else if (userLang.startsWith('zh')) setLanguage('cn');
     else if (userLang.startsWith('ja')) setLanguage('jp');
     else setLanguage('en'); 
 }
 
-// 남은 광고 횟수 표시 업데이트 (언어별 포맷 적용)
 function updateAdCountDisplay() {
     const count = parseInt(localStorage.getItem(KEY_AD_COUNT) || '0');
     const remain = Math.max(0, AD_CONFIG.MAX_DAILY_ADS - count);
@@ -136,7 +131,7 @@ function showAdIfNeeded(callback) {
         callback(); 
     } else {
         pendingAction = callback;
-        updateAdCountDisplay(); // 팝업 띄우기 전 텍스트 갱신
+        updateAdCountDisplay();
         
         isAdShowing = true;
         adModal.style.display = 'flex';
@@ -259,8 +254,11 @@ function initThreeJS() {
     const aspect = width / height;
     camera = new THREE.OrthographicCamera(-aspect, aspect, 1, -1, 0.1, 100);
     camera.position.z = 10;
+    
+    // [수정 완료] videoTexture 정의됨
     videoTexture = new THREE.VideoTexture(video);
     videoTexture.minFilter = THREE.LinearFilter;
+    
     const geometry = new THREE.PlaneGeometry(aspect * 2, 2, 64, 64);
     originalPositions = new Float32Array(geometry.attributes.position.count * 3);
     originalPositions.set(geometry.attributes.position.array);
@@ -271,7 +269,6 @@ function initThreeJS() {
     LipstickManager.init(scene);
     AccessoryManager.init(scene);
     
-    // [중요] 시작하자마자 언어 자동 감지
     detectAndSetLanguage();
     
     window.addEventListener('resize', () => {
@@ -321,8 +318,6 @@ function renderLoop(timestamp) {
     renderer.render(scene, camera);
 }
 
-// ... Helper Functions (FaceWarping, BeautyPosition, CreateLandmarker) ...
-// (기존 코드와 동일)
 function applyFaceWarping(landmarks, positions) { if (SETTINGS.slimStrength <= 0.01) return; const width = camera.right - camera.left; const height = camera.top - camera.bottom; function toWorld(lm) { return { x: (lm.x - 0.5) * width, y: -(lm.y - 0.5) * height }; } const chin = toWorld(landmarks[152]); const nose = toWorld(landmarks[1]); const faceWidth = Math.abs(toWorld(landmarks[234]).x - toWorld(landmarks[454]).x); const radius = faceWidth * 1.3; const force = SETTINGS.slimStrength * 0.2; for (let i = 0; i < positions.length; i += 3) { const vx = positions[i]; const vy = positions[i+1]; if (Math.abs(vx - chin.x) > radius || Math.abs(vy - chin.y) > radius) continue; const dx = vx - chin.x; const dy = vy - chin.y; const distSq = dx*dx + dy*dy; if (distSq < radius * radius) { const factor = Math.exp(-distSq / (2 * (radius * 0.4) * (radius * 0.4))); positions[i] += (nose.x - vx) * factor * force; positions[i+1] += (nose.y - vy) * factor * force * 0.5; } } }
 function updateBeautyPosition(landmarks, sprite) { if (!sprite) return; const width = camera.right - camera.left; const height = camera.top - camera.bottom; let noseX = (landmarks[1].x - 0.5) * width; const noseY = -(landmarks[1].y - 0.5) * height; if (isFrontCamera) noseX = -noseX; const leftEar = (landmarks[234].x - 0.5) * width; const rightEar = (landmarks[454].x - 0.5) * width; const faceW = Math.abs(rightEar - leftEar); sprite.position.set(noseX, noseY, 0.1); const size = faceW * 4.0; sprite.scale.set(size, size, 1); }
 async function createFaceLandmarker() { const filesetResolver = await FilesetResolver.forVisionTasks("./assets/libs/wasm"); faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, { baseOptions: { modelAssetPath: "./assets/models/face_landmarker.task", delegate: "GPU" }, outputFaceBlendshapes: false, runningMode: "VIDEO", numFaces: SETTINGS.maxFaces }); startWebcam(); }
