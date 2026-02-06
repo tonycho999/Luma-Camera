@@ -1,4 +1,3 @@
-/* style.css 전체 교체 */
 :root {
   --primary-color: #ffffff;
   --bg-color: #000000;
@@ -9,7 +8,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  user-select: none; /* 텍스트 선택 방지 */
+  user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -17,11 +16,11 @@ body, html {
   width: 100%;
   height: 100%;
   background-color: var(--bg-color);
-  overflow: hidden; /* 스크롤바 없애기 */
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* 앱 전체를 감싸는 통 */
+/* 앱 전체 컨테이너 */
 #app-container {
   position: relative;
   width: 100%;
@@ -32,7 +31,7 @@ body, html {
   background-color: black;
 }
 
-/* 1. 원본 웹캠 (반드시 숨김 처리) */
+/* 1. 웹캠 (숨김) */
 #webcam {
   position: absolute;
   width: 0;
@@ -42,68 +41,60 @@ body, html {
   z-index: -1;
 }
 
-/* 2. 필터 결과 화면 (화면 꽉 채우기) */
+/* 2. 캔버스 (화면 꽉 채움) */
 #output_canvas {
   width: 100%;
   height: 100%;
-  object-fit: cover; /* 비율 유지하며 꽉 채우기 */
+  object-fit: cover;
   display: block;
-  transition: filter 0.2s ease; /* 필터 변경 시 부드럽게 */
 }
 
-/* 3. 상단 버튼 (카메라 전환, 언어, 설치) */
+/* [NEW] 플래시 효과 (촬영 시 번쩍) */
+#flash-effect {
+    position: fixed; 
+    top: 0; left: 0; 
+    width: 100%; height: 100%;
+    background: white; 
+    opacity: 0; 
+    pointer-events: none; 
+    z-index: 9999;
+}
+@keyframes flashAnim {
+    0% { opacity: 0.8; } 
+    100% { opacity: 0; }
+}
+
+/* 3. 상단 바 */
 #top-bar {
   position: absolute;
-  top: 20px;
+  top: 0;
   left: 0;
   width: 100%;
   display: flex;
-  justify-content: space-between; /* 양쪽 끝으로 정렬 */
+  justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  padding: 10px 20px;
   z-index: 100;
-  box-sizing: border-box;
-  /* 노치 디자인 대응 */
-  padding-top: max(20px, env(safe-area-inset-top)); 
+  padding-top: max(10px, env(safe-area-inset-top)); 
 }
 
-/* 언어 버튼 그룹 */
+/* 언어 버튼 그룹 (상단 숨김 or 필요시 표시) */
 #lang-group {
-  display: flex;
-  gap: 8px;
-  background: rgba(0,0,0,0.5);
-  padding: 5px 10px;
-  border-radius: 20px;
+    display: none; /* 디자인 간소화를 위해 일단 숨김 (필요하면 block으로 변경) */
 }
 
-.lang-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 0;
-  filter: grayscale(100%); /* 기본은 흑백 */
-  transition: transform 0.2s, filter 0.2s;
-}
-
-.lang-btn:hover, .lang-btn.active {
-  transform: scale(1.2);
-  filter: grayscale(0%); /* 선택되면 컬러 */
-}
-
-/* 설치 버튼 스타일 */
+/* 설치 버튼 */
 #install-btn {
   background: linear-gradient(45deg, #ff0055, #ff5500);
   color: white;
   border: none;
-  padding: 8px 15px;
+  padding: 6px 12px;
   border-radius: 20px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: bold;
   cursor: pointer;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-  animation: pulse 2s infinite; /* 깜빡이는 효과 */
-  margin-right: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
@@ -114,13 +105,13 @@ body, html {
 
 /* 카메라 전환 버튼 */
 #switch-camera-btn {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: rgba(0, 0, 0, 0.3);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  font-size: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 20px;
   cursor: pointer;
   backdrop-filter: blur(4px);
   display: flex;
@@ -128,45 +119,39 @@ body, html {
   justify-content: center;
 }
 
-/* 4. 하단 컨트롤 영역 */
+/* 4. 하단 UI 레이어 (변경됨) */
 #ui-layer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  padding-bottom: 30px;
-  padding-bottom: max(30px, env(safe-area-inset-bottom));
-  
-  /* 배경을 어둡게 그라데이션 */
-  background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-  
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 15px;
-  z-index: 100;
+    position: absolute; 
+    bottom: 0; 
+    left: 0; 
+    width: 100%;
+    display: flex; 
+    flex-direction: column; 
+    align-items: center;
+    padding-bottom: max(30px, env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+    z-index: 100;
 }
 
-/* [NEW] 확장된 컨트롤 박스 (스크롤 가능) */
-#controls-container {
-  width: 85%;
-  max-width: 400px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.expanded-controls {
-    background: rgba(0, 0, 0, 0.6);
-    padding: 15px;
+/* [NEW] 메뉴 팝업 (옵션 버튼 누르면 나옴) */
+#extra-controls {
+    width: 90%; 
+    max-width: 400px;
+    background: rgba(0, 0, 0, 0.7);
     border-radius: 20px;
-    backdrop-filter: blur(5px);
-    max-height: 50vh; /* 화면 절반까지만 차지 */
-    overflow-y: auto; /* 내용 많으면 스크롤 */
+    padding: 15px;
+    margin-bottom: 20px;
+    backdrop-filter: blur(10px);
+    display: none; /* JS로 제어 */
     border: 1px solid rgba(255,255,255,0.1);
+    animation: slideUp 0.3s ease-out;
+}
+@keyframes slideUp { 
+    from { transform: translateY(20px); opacity: 0; } 
+    to { transform: translateY(0); opacity: 1; } 
 }
 
-/* 섹션 구분 */
+/* 섹션 스타일 */
 .control-section {
     margin-bottom: 15px;
     padding-bottom: 10px;
@@ -177,232 +162,129 @@ body, html {
     margin-bottom: 0;
     padding-bottom: 0;
 }
-
 .section-title {
     display: block;
     color: #ddd;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: bold;
     margin-bottom: 8px;
-    text-transform: uppercase;
     opacity: 0.8;
 }
 
-/* 기본 슬라이더 그룹 */
+/* 슬라이더 */
 .control-group {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: white;
-  font-weight: 500;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-  margin-bottom: 8px;
-}
-
-.control-group span {
-  width: 60px;
-  font-size: 14px;
-}
-
-/* 슬라이더 디자인 */
-input[type=range] {
-  flex: 1;
-  margin-left: 10px;
-  height: 4px;
-  border-radius: 2px;
-  appearance: none;
-  background: rgba(255, 255, 255, 0.3);
-  outline: none;
-}
-
-input[type=range]::-webkit-slider-thumb {
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: white;
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
-
-/* [NEW] 버튼 그룹 스타일 (필터, 액세서리) */
-.button-group, .color-picker-group {
     display: flex;
-    gap: 8px;
-    flex-wrap: wrap; /* 줄바꿈 허용 */
+    align-items: center;
+    justify-content: space-between;
+    color: white;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+.control-group span { width: 50px; }
+input[type=range] {
+    flex: 1; margin-left: 10px; height: 4px; border-radius: 2px;
+    appearance: none; background: rgba(255,255,255,0.3); outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+    appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: white; cursor: pointer;
 }
 
+/* 버튼 그룹 */
+.button-group, .color-picker-group {
+    display: flex; gap: 8px; flex-wrap: wrap;
+}
 .filter-btn, .acc-btn {
     background: rgba(255,255,255,0.15);
     border: 1px solid rgba(255,255,255,0.1);
-    color: white;
-    padding: 6px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: 0.2s;
+    color: white; padding: 6px 12px; border-radius: 12px;
+    font-size: 12px; cursor: pointer;
 }
-
 .filter-btn.active, .acc-btn.active {
-    background: var(--accent-color);
-    border-color: var(--accent-color);
-    font-weight: bold;
-    box-shadow: 0 0 8px rgba(255, 0, 85, 0.4);
+    background: var(--accent-color); border-color: var(--accent-color); font-weight: bold;
 }
-
-/* [NEW] 컬러 피커 스타일 (립스틱) */
 .color-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.3);
-    cursor: pointer;
-    transition: 0.2s;
-    position: relative;
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3); cursor: pointer;
 }
 .color-btn.active {
-    border-color: white;
-    transform: scale(1.15);
-    box-shadow: 0 0 10px rgba(255,255,255,0.5);
+    border-color: white; transform: scale(1.2);
 }
 
-/* [NEW] 잠금 아이콘 표시 */
-.locked::after {
-    content: '🔒';
-    font-size: 10px;
-    margin-left: 4px;
-}
-.color-btn.locked::after {
-    content: '🔒';
-    font-size: 12px;
-    display: flex;
-    justify-content: center;
+/* [NEW] 하단 버튼 바 (설정 - 촬영 - 공백) */
+.bottom-bar {
+    display: flex; 
+    width: 100%; 
+    justify-content: space-around; 
     align-items: center;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.4);
+    padding: 0 20px;
+    margin-top: 10px;
+}
+
+/* [NEW] 옵션 버튼 (작고 귀엽게) */
+#option-btn {
+    width: 50px; 
+    height: 50px;
     border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white; 
+    font-size: 12px;
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    cursor: pointer; 
+    backdrop-filter: blur(4px);
+    transition: transform 0.1s;
 }
+#option-btn:active { transform: scale(0.95); background: rgba(255,255,255,0.3); }
 
-/* 촬영 버튼 */
+/* [NEW] 촬영 버튼 (가장 크게) */
 #capture-btn {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: transparent;
-  border: 4px solid white;
-  position: relative;
-  cursor: pointer;
-  margin-top: 5px;
+    width: 80px; 
+    height: 80px;
+    border-radius: 50%;
+    background: transparent;
+    border: 4px solid white;
+    position: relative; 
+    cursor: pointer;
 }
-
 #capture-btn::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 54px;
-  height: 54px;
-  background-color: white;
-  border-radius: 50%;
-  transition: 0.1s;
+    content: ''; 
+    position: absolute;
+    top: 50%; left: 50%; 
+    transform: translate(-50%, -50%);
+    width: 65px; height: 65px;
+    background-color: white; 
+    border-radius: 50%; 
+    transition: 0.1s;
 }
-
-#capture-btn:active::after {
-  transform: translate(-50%, -50%) scale(0.9);
-  background-color: #ddd;
+#capture-btn:active::after { 
+    transform: translate(-50%, -50%) scale(0.9); 
+    background: #ddd; 
 }
 
 /* [광고 팝업 스타일] */
 #ad-modal {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0, 0, 0, 0.85);
-    z-index: 9999;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.85); z-index: 9999;
+    display: flex; justify-content: center; align-items: center;
 }
-
 .ad-content {
-    background: white;
-    width: 90%;
-    max-width: 350px;
-    padding: 20px;
-    border-radius: 15px;
-    text-align: center;
+    background: white; width: 90%; max-width: 320px;
+    padding: 20px; border-radius: 15px; text-align: center;
     box-shadow: 0 10px 25px rgba(0,0,0,0.5);
 }
-
-.ad-content h3 {
-    margin: 0 0 10px 0;
-    color: #333;
-    font-size: 18px;
-}
-
-.ad-content p {
-    color: #666;
-    margin-bottom: 20px;
-    font-size: 14px;
-}
-
+.ad-content h3 { margin: 0 0 8px 0; color: #333; font-size: 18px; }
+.ad-content p { color: #666; margin-bottom: 15px; font-size: 13px; line-height: 1.4; }
 .ad-box {
-    width: 100%;
-    height: 250px;
-    background: #f0f0f0;
-    margin-bottom: 20px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
-    border-radius: 8px;
+    width: 100%; height: 250px; background: #f0f0f0;
+    margin-bottom: 15px; display: flex; justify-content: center; align-items: center;
+    overflow: hidden; border-radius: 8px;
 }
-
 #close-ad-btn {
-    background: var(--accent-color);
-    color: white;
-    border: none;
-    padding: 12px 25px;
-    border-radius: 25px;
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-    width: 100%;
-    transition: background 0.2s;
+    background: var(--accent-color); color: white; border: none;
+    padding: 12px 0; border-radius: 25px; font-size: 15px; font-weight: bold;
+    cursor: pointer; width: 100%; transition: opacity 0.2s;
 }
-#close-ad-btn:active {
-    background: #d40045;
-}
-
-/* [NEW] 옵션 버튼 스타일 */
-#option-btn {
-    width: 100%;
-    padding: 12px;
-    background: linear-gradient(90deg, #ff0055, #ff5500);
-    border: none;
-    border-radius: 15px;
-    color: white;
-    font-weight: bold;
-    font-size: 14px;
-    cursor: pointer;
-    margin-bottom: 10px;
-    transition: transform 0.2s;
-    box-shadow: 0 4px 15px rgba(255, 0, 85, 0.4);
-}
-
-#option-btn:active {
-    transform: scale(0.98);
-}
-
-/* 추가 컨트롤 영역이 열릴 때 애니메이션 */
-#extra-controls {
-    animation: slideDown 0.3s ease-out;
-}
-
-@keyframes slideDown {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* 이제 잠금 아이콘(.locked) 스타일은 필요 없지만, 혹시 모르니 둠 */
+#close-ad-btn:active { opacity: 0.8; }
